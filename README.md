@@ -17,5 +17,7 @@ cd cairo-plot
 g++ circularbuffer.cpp plottingarea.cpp plottingarea_test.cpp -o test_program -O3 `pkg-config gtkmm-3.0 --cflags --libs`
 ./test_program
 ```
+For Windows, refer to <https://github.com/tschoonj/GTK-for-Windows-Runtime-Environment-Installer>.
+
 You can modify `plottingarea_test.cpp` to change the wave and make other adjustments, like speed, buffer size, or axis-y range.
 
