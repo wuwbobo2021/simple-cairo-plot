@@ -10,7 +10,7 @@ g++ circularbuffer.cpp plottingarea.cpp recorder.cpp frontend.cpp demo.cpp -o te
 ```
 For Windows, refer to https://github.com/tschoonj/GTK-for-Windows-Runtime-Environment-Installer.
 
-You can modify `demo.cpp` to change the wave and make other adjustments, like speed, buffer size, or axis-y range.
+You can modify `demo.cpp` to change the wave form and make other adjustments, like speed, buffer size or axis-y range.
 
 If you would like to make use of this small component, you can compile the source files except `demo.cpp` into a shared library, and put the header files into a seperate folder, that will be the interface of the library.
 
