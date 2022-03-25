@@ -4,6 +4,7 @@
 #ifndef SIMPLE_CAIRO_PLOT_AXIS_RANGE_H
 #define SIMPLE_CAIRO_PLOT_AXIS_RANGE_H
 
+#include <cmath>
 #include <stdexcept>
 
 namespace SimpleCairoPlot
@@ -24,8 +25,12 @@ public:
 	bool contain(float val) const;
 	bool contain(AxisRange range) const;
 	float cut_value(float val) const;
+	AxisRange cut_range(AxisRange range) const;
+	AxisRange fit_in_range(AxisRange range) const;
 	float map(float val, float target_width, bool reverse = false) const;
 	float map(float val, AxisRange range, bool reverse = false) const;
+	float map_reverse(float val, float target_width) const;
+	float map_reverse(float val, AxisRange range) const;
 	
 	void set(float min, float max);
 	void move(float offset);
@@ -33,6 +38,7 @@ public:
 	void max_move_to(float max); //min moves with max
 	void scale(float factor, float cursor);
 	void scale(float factor);
+	void set_int();
 };
 
 inline AxisRange::AxisRange(float min, float max):
@@ -75,6 +81,25 @@ inline float AxisRange::cut_value(float val) const
 	return val;
 }
 
+inline AxisRange AxisRange::cut_range(AxisRange range) const
+{
+	return AxisRange(this->cut_value(range.min()), this->cut_value(range.max()));
+}
+
+inline AxisRange AxisRange::fit_in_range(AxisRange range) const
+{
+	if (this->contain(range)) return range;
+	if (range.length() >= this->val_length) return *this;
+	
+	AxisRange range_new = range;
+	if (range.min() < this->val_min)
+		range_new.min_move_to(this->val_min);
+	else if (range.max() > this->val_max)
+		range_new.max_move_to(this->val_max);
+	
+	return range_new;
+}
+
 inline float AxisRange::map(float val, float target_width, bool reverse) const
 {
 	if (this->val_length == 0) return 0;
@@ -88,6 +113,16 @@ inline float AxisRange::map(float val, float target_width, bool reverse) const
 inline float AxisRange::map(float val, AxisRange range, bool reverse) const
 {
 	return this->map(val, range.length(), reverse) + range.min();
+}
+
+inline float AxisRange::map_reverse(float val, float target_width) const
+{
+	return this->map(val, target_width, true);
+}
+
+inline float AxisRange::map_reverse(float val, AxisRange range) const
+{
+	return this->map(val, range, true);
 }
 
 inline void AxisRange::set(float min, float max)
@@ -124,12 +159,18 @@ inline void AxisRange::scale(float factor, float cursor)
 	
 	float l = cursor - this->val_min, r = this->val_max - cursor;
 	l *= factor; r *= factor;
-	this->val_min = cursor - l; this->val_max = cursor + r;
+	this->set(cursor - l, cursor + r);
 }
 
 inline void AxisRange::scale(float factor)
 {
 	this->scale(factor, (this->val_min + this->val_max) / 2.0);
+}
+
+inline void AxisRange::set_int()
+{
+	this->val_min = round(this->val_min);
+	this->val_max = round(this->val_max);
 }
 
 }

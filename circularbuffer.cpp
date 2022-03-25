@@ -7,49 +7,59 @@
 
 using namespace SimpleCairoPlot;
 
-CircularBuffer::CircularBuffer(unsigned int sz):
-	size(sz)
+void CircularBuffer::init(unsigned int sz)
 {
+	this->mtx.lock();
+
+	this->bufsize = sz;
+	if (this->buf != NULL) delete[] this->buf;
+	
 	if (sz == 0)
-		throw std::invalid_argument("CircularBuffer::CircularBuffer(): invalid buffer size 0.");
+		throw std::invalid_argument("CircularBuffer::init(): invalid buffer size 0.");
 	
-	this->buf = new float[this->size];
+	this->buf = new float[this->bufsize];
 	if (this->buf == NULL)
-		throw std::runtime_error("CircularBuffer::CircularBuffer(): out of memory.");
+		throw std::runtime_error("CircularBuffer::init(): out of memory.");
 	
-	this->bufend = this->buf + this->size - 1;
+	this->bufend = this->buf + this->bufsize - 1;
 	this->end = this->buf;
+	
+	this->mtx.unlock();
+}
+
+CircularBuffer::CircularBuffer() {}
+
+CircularBuffer::CircularBuffer(unsigned int sz)
+{
+	this->init(sz);
 }
 
 void CircularBuffer::copy_from(const CircularBuffer& from)
 {
 	this->mtx.lock();
 	
-	if (from.size == this->size) {
-		for (unsigned int i = 0; i < this->size; i++)
+	if (from.bufsize == this->bufsize) {
+		for (unsigned int i = 0; i < this->bufsize; i++)
 			this->buf[i] = from.buf[i];
 		this->cnt = from.cnt;
 	}
-	
-	//the two conditions below should be avoided (not optimized)
-	else if (from.size > this->size) {
-		unsigned int offset = from.size - this->size;
-		for (unsigned int i = 0; i < this->size; i++)
+	else if (from.bufsize > this->bufsize) {
+		unsigned int offset = from.bufsize - this->bufsize;
+		for (unsigned int i = 0; i < this->bufsize; i++)
 			this->buf[i] = from[offset + i];
-		this->cnt = this->size;
-	} else { //from.size < this->size
-		for (unsigned int i = 0; i < from.size; i++)
+		this->cnt = this->bufsize;
+	} else { //from.bufsize < this->bufsize
+		for (unsigned int i = 0; i < from.bufsize; i++)
 			this->buf[i] = from[i];
-		this->cnt = from.size;
+		this->cnt = from.bufsize;
 	}
 	
 	this->mtx.unlock();
 }
 
-CircularBuffer::CircularBuffer(const CircularBuffer& from):
-	size(from.size)
+CircularBuffer::CircularBuffer(const CircularBuffer& from)
 {
-	this->buf = new float[from.size];
+	this->init(from.bufsize);
 	this->copy_from(from);
 }
 
@@ -61,7 +71,7 @@ CircularBuffer& CircularBuffer::operator=(const CircularBuffer& buf)
 
 CircularBuffer::~CircularBuffer()
 {
-	delete[] this->buf;
+	if (this->buf != NULL) delete[] this->buf;
 }
 
 AxisRange CircularBuffer::get_value_range(const AxisRange& range)
@@ -97,16 +107,16 @@ void CircularBuffer::clear(bool clear_count_history)
 	this->end = this->buf;
 }
 
-void CircularBuffer::load(const float* data, unsigned int cnt) //TODO: some optimization
+void CircularBuffer::load(const float* data, unsigned int cnt)
 {
 	if (cnt == 0) return;
 	this->mtx.lock();
 	
 	const float* p;
-	if (cnt <= this->size)
+	if (cnt <= this->bufsize)
 		p = data;
 	else
-		p = data + cnt - this->size;
+		p = data + cnt - this->bufsize;
 	
 	for (const float* pt = p; pt < p + cnt; pt++)
 		this->push(*pt);

@@ -15,9 +15,9 @@ namespace SimpleCairoPlot
 
 class CircularBuffer
 {
-	float* buf; float* bufend;
+	float* buf = NULL; float* bufend;
 	float* end;
-	unsigned int cnt = 0;
+	unsigned int bufsize = 0, cnt = 0;
 	unsigned long int cnt_overall = 0;
 	
 	std::mutex mtx;
@@ -26,16 +26,18 @@ class CircularBuffer
 	float* get_item_addr(unsigned int i) const;
 	
 public:
-	const unsigned int size;
 	
+	CircularBuffer(); void init(unsigned int sz); //init() must be called if this constructor is used
 	CircularBuffer(unsigned int sz);
 	CircularBuffer(const CircularBuffer& from);
 	CircularBuffer& operator=(const CircularBuffer& buf);
 	~CircularBuffer();
 	
+	unsigned int size() const;
 	float& operator[](unsigned int i) const;
 	
 	unsigned int count() const;
+	AxisRange range() const;
 	bool is_full() const;
 	unsigned long int count_discarded() const; 
 	bool is_valid_range(const AxisRange& range) const;
@@ -50,18 +52,23 @@ public:
 inline float* CircularBuffer::get_item_addr(unsigned int i) const
 {
 	float* p;
-	if (this->cnt < this->size)
+	if (this->cnt < this->bufsize)
 		p = this->buf + i;
 	else
 		p = this->end + i;
 	
-	if (p > this->bufend) p -= this->size;
+	if (p > this->bufend) p -= this->bufsize;
 	return p;
+}
+
+inline unsigned int CircularBuffer::size() const
+{
+	return this->bufsize;
 }
 
 inline float& CircularBuffer::operator[](unsigned int i) const
 {
-	if (i >= this->size)
+	if (i >= this->bufsize)
 		throw std::out_of_range("CircularBuffer::operator[](): index exceeds the buffer size.");
 	
 	return *(this->get_item_addr(i));
@@ -72,6 +79,11 @@ inline unsigned int CircularBuffer::count() const
 	return this->cnt;
 }
 
+inline AxisRange CircularBuffer::range() const
+{
+	return AxisRange(0, this->cnt - 1);
+}
+
 inline unsigned long int CircularBuffer::count_discarded() const
 {
 	return this->cnt_overall - this->cnt;
@@ -79,18 +91,20 @@ inline unsigned long int CircularBuffer::count_discarded() const
 
 inline bool CircularBuffer::is_full() const
 {
-	return this->cnt == this->size;
+	return this->cnt == this->bufsize;
 }
 
 inline bool CircularBuffer::is_valid_range(const AxisRange& range) const
 {
-	return range.min() >= 0 && range.max() < this->size;
+	return range.min() >= 0 && range.max() < this->bufsize;
 }
 
 inline void CircularBuffer::push(float val)
 {
+	if (! this->buf) return;
+	
 	*this->end = val;
-	if (this->cnt < this->size) this->cnt++;
+	if (this->cnt < this->bufsize) this->cnt++;
 	this->cnt_overall++;
 	
 	this->end++;
