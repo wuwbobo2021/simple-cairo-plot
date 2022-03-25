@@ -41,6 +41,8 @@ public:
 	
 	Frontend(); void init(std::vector<VariableAccessPtr>& ptrs, unsigned int buf_size);
 	Frontend(std::vector<VariableAccessPtr>& ptrs, unsigned int buf_size);
+	Frontend(const Frontend&) = delete;
+	Frontend& operator=(const Frontend&) = delete;
 	virtual ~Frontend();
 	
 	void open(); //create a new thread to run the frontend
