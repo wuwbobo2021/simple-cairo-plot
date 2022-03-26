@@ -103,12 +103,12 @@ class Recorder: public Gtk::Box
 	
 	Gtk::Scrollbar scrollbar; Gtk::Label space_left_of_scroll; Gtk::Box scrollbox;
 	Glib::Dispatcher dispatcher_range_update;
-	bool flag_on_scale = false;
+	bool flag_on_zoom = false;
 	
 	std::thread* thread_timer = NULL;
 	bool flag_recording = false;
 	bool option_record_until_full = false;
-	unsigned int interval = 10; //in milliseconds
+	float interval = 10; //in milliseconds
 	
 	bool flag_not_full = true;
 	sigc::signal<void()> sig_full;
@@ -136,8 +136,8 @@ public:
 	
 	sigc::signal<void()> signal_full();
 	
-	bool set_interval(unsigned int new_interval); //interval of reading current values, in milliseconds
-		
+	bool set_interval(float new_interval); //interval of reading current values, in milliseconds
+	
 	bool set_index_range(unsigned int range_width = 0); //range_width + 1 is the amount of data shows in each area
 	bool set_index_unit(float unit); //it should be the data interval, index values are multiplied by the unit
 	bool set_y_range(unsigned int index, AxisRange range); //useless when option_auto_set_range_y is set

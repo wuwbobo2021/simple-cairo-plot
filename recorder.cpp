@@ -204,9 +204,9 @@ sigc::signal<void()> Recorder::signal_full()
 	return this->sig_full;
 }
 
-bool Recorder::set_interval(unsigned int new_interval)
+bool Recorder::set_interval(float new_interval)
 {
-	if (new_interval == 0) return false;
+	if (new_interval <= 0) return false;
 	
 	this->interval = new_interval;
 	for (unsigned int i = 0; i < this->var_cnt; i++)
@@ -296,8 +296,9 @@ void Recorder::record_loop()
 	unsigned int refresh_interval = this->interval;
 	if (refresh_interval < 40) refresh_interval = 40; //maximum graph refresh rate: 25 Hz
 	
+	time_point t = system_clock::now();
 	while (this->flag_recording) {
-		time_point time_bef_read = system_clock::now();
+		//time_point time_bef_read = system_clock::now();
 		
 		for (unsigned int i = 0; i < this->var_cnt; i++)
 			this->bufs[i].push(this->ptrs[i].read());
@@ -320,7 +321,9 @@ void Recorder::record_loop()
 			this->refresh_areas();
 		}
 		
-		sleep_until(time_bef_read + milliseconds(this->interval));
+		//sleep_until(time_bef_read + microseconds((int)(this->interval * 1000.0)));
+		t += microseconds((int)(this->interval * 1000.0));
+		sleep_until(t);
 	}
 }
 
@@ -332,7 +335,7 @@ void Recorder::on_scroll()
 	
 	for (unsigned int i = 0; i < this->var_cnt; i++) {
 		this->areas[i].option_auto_goto_end = goto_end;
-		if (goto_end == false || this->flag_on_scale)
+		if (goto_end == false || this->flag_on_zoom)
 			this->areas[i].set_range_x(AxisRange(val, val + adj->get_page_size()));
 	}
 	
@@ -354,7 +357,7 @@ bool Recorder::on_button_press(GdkEventButton *event)
 	if (event->type != GDK_BUTTON_PRESS) return true;
 	if (event->button != 1 && event->button != 3) return true;
 	
-	bool scale_in = (event->button == 1); //is left button?
+	bool zoom_in = (event->button == 1); //is left button?
 	
 	Gtk::Allocation alloc = this->areas[0].get_allocation();
 	AxisRange range_x = this->areas[0].get_range_x(), range_x_new = range_x,
@@ -362,7 +365,7 @@ bool Recorder::on_button_press(GdkEventButton *event)
 	
 	unsigned int x = range_scr_x.map(event->x, range_x);
 	
-	if (scale_in) {
+	if (zoom_in) {
 		range_x_new.scale(0.5, x);
 		range_x_new.set_int();
 		if (range_x_new.length() < 2) return true;
@@ -371,10 +374,10 @@ bool Recorder::on_button_press(GdkEventButton *event)
 		range_x_new = this->bufs[0].range().fit_in_range(range_x_new);
 	}
 	
-	this->flag_on_scale = true;
+	this->flag_on_zoom = true;
 	Glib::RefPtr<Gtk::Adjustment> adj = this->scrollbar.get_adjustment();
 	adj->configure(range_x_new.min(), 0, this->bufs[0].count() - 1, 1, 200, range_x_new.length());
-	this->flag_on_scale = false;
+	this->flag_on_zoom = false;
 	return true;
 }
 

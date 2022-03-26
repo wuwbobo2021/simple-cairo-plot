@@ -34,7 +34,10 @@ class PlottingArea: public Gtk::DrawingArea
 	bool flag_auto_refresh = false;
 	unsigned int refresh_interval = 40; //25 Hz
 	
-	unsigned int counter1 = 0, counter2 = 0; //used for the interval of range y auto setting
+	// used for the controlling the interval of range y auto setting
+	unsigned int counter1 = 0, counter2 = 0;
+	bool flag_check_range_y = false, flag_adapt = false;
+	
 	void refresh_loop();
 	void refresh_callback();
 	
@@ -74,7 +77,7 @@ public:
 	bool set_range_x(AxisRange range);
 	bool set_range_y(AxisRange range);
 	void range_x_goto_end();
-	void range_y_auto_set(bool tight = true);
+	void range_y_auto_set(bool adapt = true);
 };
 
 }

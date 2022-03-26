@@ -66,20 +66,17 @@ void PlottingArea::refresh(bool forced_check_range_y, bool forced_adapt)
 	
 	if (this->option_auto_goto_end) this->range_x_goto_end();
 	
-	bool auto_set_basic = false, auto_set_adapt = false;
-	
-	if (forced_check_range_y) auto_set_basic = true;
+	if (forced_check_range_y) this->flag_check_range_y = true;
 	else if (this->option_auto_set_range_y)
 		if (++this->counter1 > 5) {
-			auto_set_basic = true; this->counter1 = 0;
+			this->flag_check_range_y = true; this->counter1 = 0;
 		}
 	
-	if (auto_set_basic) {
-		if (forced_adapt) auto_set_adapt = true;
+	if (this->flag_check_range_y) {
+		if (forced_adapt) this->flag_adapt = true;
 		else if (++this->counter2 > 5) {
-			auto_set_adapt = true; this->counter2 = 0;
+			this->flag_adapt = true; this->counter2 = 0;
 		}
-		this->range_y_auto_set(auto_set_adapt);
 	}
 	
 	this->dispatcher.emit(); //let the main thread enter this->queue_draw() and draw the frame
@@ -137,13 +134,13 @@ bool PlottingArea::set_range_y(AxisRange range)
 	} else return false;
 }
 
-void PlottingArea::range_y_auto_set(bool tight)
+void PlottingArea::range_y_auto_set(bool adapt)
 {
 	if (this->source->count() <= 1)
 		this->range_y.set(0, 10);
 	else {
 		AxisRange range_tight = this->source->get_value_range(this->range_x);
-		if (tight == false && this->range_y.contain(range_tight)) return;
+		if (adapt == false && this->range_y.contain(range_tight)) return;
 		
 		float min = range_tight.min(), max = range_tight.max();
 		
@@ -178,6 +175,10 @@ void PlottingArea::refresh_loop() //in the timer thread
 
 bool PlottingArea::on_draw(const Cairo::RefPtr<Cairo::Context>& cr)
 {
+	if (this->flag_check_range_y) {
+		this->range_y_auto_set(this->flag_adapt);
+		this->flag_adapt = this->flag_check_range_y = false;
+	}
 	this->plot(cr, this->draw_grid(cr));
 	return true;
 }
