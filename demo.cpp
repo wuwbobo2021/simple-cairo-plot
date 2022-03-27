@@ -63,8 +63,8 @@ float Demo::read_var2()
 	
 	const float pi = 3.141592654;
 	float cycles = this->t() * this->freq;
-	float psi = (cycles - (int)cycles) * 2*pi; //actually omega*t - n*2pi
-	return fabs(10 * sin(psi)); //10*sin(2pi*f×t + 0)
+	float ang = (cycles - (int)cycles) * 2*pi; //actually omega*t - 2kpi
+	return fabs(10 * sin(ang)); //10*sin(2pi*f×t + 0)
 }
 
 int main(int argc, char** argv)
