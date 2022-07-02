@@ -167,7 +167,7 @@ void PlottingArea::refresh_loop() //in the timer thread
 	using namespace std::this_thread;
 	
 	while (this->flag_auto_refresh) {
-		time_point time_bef_draw = system_clock::now();
+		system_clock::time_point time_bef_draw = system_clock::now();
 		this->refresh(); 
 		sleep_until(time_bef_draw + milliseconds(this->refresh_interval));
 	}

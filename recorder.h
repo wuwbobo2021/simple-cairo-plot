@@ -25,19 +25,19 @@ class VariableAccessPtr
 	bool is_func_ptr = false;
 	
 	// used if it's a data pointer
-	float* addr_data = NULL;
+	const float* addr_data = NULL;
 	
 	// used if it's a function pointer
 	VariableAccessFuncPtr addr_func = NULL;
 	void* addr_obj = NULL;
 
 public:
-	Gdk::RGBA color_plot;
+	Gdk::RGBA color_plot; std::string name_csv = "", name_friendly = "";
 	
 	VariableAccessPtr();
-	VariableAccessPtr(float* pd);
+	VariableAccessPtr(const float* pd);
 	VariableAccessPtr(void* pobj, VariableAccessFuncPtr pfunc);
-	void set(float* pd);
+	void set(const float* pd);
 	void set(void* pobj, VariableAccessFuncPtr pfunc);
 	float read() const;
 };
@@ -60,7 +60,7 @@ inline VariableAccessPtr MemberFuncPtr(T* pobj)
 
 inline VariableAccessPtr::VariableAccessPtr() {}
 
-inline VariableAccessPtr::VariableAccessPtr(float* pd)
+inline VariableAccessPtr::VariableAccessPtr(const float* pd)
 {
 	this->set(pd);
 }
@@ -70,7 +70,7 @@ inline VariableAccessPtr::VariableAccessPtr(void* pobj, VariableAccessFuncPtr pf
 	this->set(pobj, pfunc);
 }
 
-inline void VariableAccessPtr::set(float* pd)
+inline void VariableAccessPtr::set(const float* pd)
 {
 	this->addr_data = pd;
 	this->read(); //produce segment fault earlier if the pointer is null
@@ -101,7 +101,7 @@ class Recorder: public Gtk::Box
 	CircularBuffer* bufs = NULL;
 	PlottingArea* areas = NULL; Gtk::EventBox* eventboxes = NULL;
 	
-	Gtk::Scrollbar scrollbar; Gtk::Label space_left_of_scroll; Gtk::Box scrollbox;
+	Gtk::Scrollbar scrollbar; Gtk::Label space_left_of_scroll; Gtk::Box scrollbox; Gtk::Box box_var_names;
 	Glib::Dispatcher dispatcher_range_update;
 	bool flag_on_zoom = false;
 	

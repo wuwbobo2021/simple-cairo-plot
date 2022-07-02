@@ -2,11 +2,10 @@
 #include <iostream>
 #include <chrono>
 
-#include "frontend.h"
+#include "simple-cairo-plot/frontend.h"
 
 using namespace std;
 using namespace std::chrono;
-using namespace std::this_thread;
 
 using namespace SimpleCairoPlot;
 
@@ -38,15 +37,23 @@ Demo::Demo()
 
 void Demo::run()
 {
+	// the recorder is created after the frontend opens, but on Windows
+	// the frontend can only be opened by `Frontend::run()`, which blocks
+	// current thread immediately. If you need to change options of the recorder,
+	// you must have another thread to do it.
+
 	this->t_start = system_clock::now();
+	
+#ifndef _WIN32
 	this->frontend.open();
-	this->frontend.recorder().set_interval(2);
+	this->frontend.recorder().set_interval(10);
+#endif
 	this->frontend.run(); //blocks
 }
 
 inline float Demo::t()
 {
-	time_point t_now = system_clock::now();
+	system_clock::time_point t_now = system_clock::now();
 	return (t_now - this->t_start).count() / 1000.0 / 1000.0 / 1000.0; //nanoseconds to seconds
 }
 

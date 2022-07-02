@@ -32,26 +32,31 @@ void Frontend::init(std::vector<VariableAccessPtr>& ptrs, unsigned int buf_size)
 
 void Frontend::open()
 {
-	if (this->thread_gtk) return;
+	if (this->thread_gtk || this->window) return;
 	this->thread_gtk = new std::thread(&Frontend::app_run, this);
 	
 	while (! this->window)
-		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
 	std::this_thread::sleep_for(std::chrono::milliseconds(10));
 }
 
 Recorder& Frontend::recorder() const
 {
+	unsigned int wait_ms = 0;
+	while (!this->window && wait_ms++ < 1000)
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
 	if (! this->window)
-		throw std::runtime_error("Frontend::recer(): frontend is not opened.");
+		throw std::runtime_error("Frontend::recorder(): frontend is not opened.");
 	return *this->rec;
 }
 
 void Frontend::run()
 {
-	if (! this->thread_gtk) return;
-	this->thread_gtk->join();
-	delete this->thread_gtk; this->thread_gtk = NULL;
+	if (this->thread_gtk) {
+		this->thread_gtk->join();
+		delete this->thread_gtk; this->thread_gtk = NULL;
+	} else
+		this->app_run();
 }
 
 void Frontend::close()
@@ -65,6 +70,9 @@ void Frontend::close()
 	if (this->thread_gtk) {
 		this->thread_gtk->join();
 		delete this->thread_gtk; this->thread_gtk = NULL;
+	} else {
+		while (this->window)
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 	}
 }
 
@@ -77,9 +85,10 @@ void Frontend::app_run()
 	this->create_window();
 	
 	app->run(*this->window);
+	
 	this->window = NULL; //the window is already destructed when the thread exits Application::run()
 	delete this->file_dialog; delete this->dispatcher_gtk;
-}
+} // Unsolved problem on windows platform when running in a new thread: Segmentation fault received here.
 
 void Frontend::create_window()
 {

@@ -47,7 +47,7 @@ public:
 	
 	void open(); //create a new thread to run the frontend
 	Recorder& recorder() const; //notice: don't keep the returned reference when you need to close the frontend
-	void run(); //join the frontend thread, blocks
+	void run(); //run in current thread or join the existing frontend thread, blocks
 	void close();
 };
 
