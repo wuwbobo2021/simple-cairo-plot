@@ -39,10 +39,10 @@ void Recorder::init(std::vector<VariableAccessPtr>& ptrs, unsigned int buf_size)
 		throw std::invalid_argument("Recorder::init(): requires at least 1 VariableAccessPtr.");
 	
 	this->var_cnt = ptrs.size();
-	this->ptrs = new VariableAccessPtr[buf_size];
-	this->bufs = new CircularBuffer[buf_size];
-	this->areas = new PlottingArea[buf_size];
-	this->eventboxes = new Gtk::EventBox[buf_size];
+	this->ptrs = new VariableAccessPtr[var_cnt];
+	this->bufs = new CircularBuffer[var_cnt];
+	this->areas = new PlottingArea[var_cnt];
+	this->eventboxes = new Gtk::EventBox[var_cnt];
 	
 	Gtk::Label* label_var_bar_ind = Gtk::manage(new Gtk::Label("Variables:"));
 	this->box_var_names.pack_start(*label_var_bar_ind, Gtk::PACK_SHRINK);
