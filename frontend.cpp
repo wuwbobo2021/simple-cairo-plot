@@ -43,7 +43,7 @@ void Frontend::open()
 Recorder& Frontend::recorder() const
 {
 	unsigned int wait_ms = 0;
-	while (!this->window && wait_ms++ < 1000)
+	while (!this->window && wait_ms++ < 5000)
 		std::this_thread::sleep_for(std::chrono::milliseconds(10));
 	if (! this->window)
 		throw std::runtime_error("Frontend::recorder(): frontend is not opened.");
