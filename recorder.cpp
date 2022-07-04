@@ -304,12 +304,13 @@ void Recorder::set_option_anti_alias(bool set)
 void Recorder::record_loop()
 {
 	using namespace std::chrono;
+	using namespace std::this_thread;
 	
-	system_clock::time_point time_last_refresh = system_clock::now();
+	steady_clock::time_point time_last_refresh = steady_clock::now();
 	unsigned int refresh_interval = this->interval;
 	if (refresh_interval < 20) refresh_interval = 20; //maximum graph refresh rate: 50 Hz
 	
-	system_clock::time_point t = system_clock::now();
+	steady_clock::time_point t = steady_clock::now();
 	while (this->flag_recording) {
 		// read and record current values of variables
 		for (unsigned int i = 0; i < this->var_cnt; i++)
@@ -329,18 +330,19 @@ void Recorder::record_loop()
 			this->dispatcher_range_update.emit(); //calls scroll_range_update() in main thread
 		}
 		
-		if (system_clock::now() >= time_last_refresh + milliseconds(refresh_interval)) {
+		if (steady_clock::now() >= time_last_refresh + milliseconds(refresh_interval)) {
 			// refresh graph view
-			time_last_refresh = system_clock::now();
+			time_last_refresh = steady_clock::now();
 			this->refresh_areas();
 		}
 		
 		t += microseconds((int)(this->interval * 1000.0));
-		if (t > system_clock::now()) {
+		if (t > steady_clock::now()) {
 			// performance of Glib::usleep() is better than this_thread::sleep_until() on Windows
-			while (t > system_clock::now()) Glib::usleep(100);
+			while (t > steady_clock::now()) Glib::usleep(100);
 		} else
-			t = system_clock::now(); //rarely happens
+			t = steady_clock::now(); //rarely happens
+		
 		// note: time cost between each loop cannot be ignored.
 	}
 }
