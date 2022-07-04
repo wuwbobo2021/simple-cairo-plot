@@ -13,7 +13,7 @@ class Demo
 {
 	Frontend frontend;
 	unsigned int freq = 2; //Hz
-	system_clock::time_point t_start;
+	steady_clock::time_point t_start;
 	
 	float t();
 	float read_var1();
@@ -26,6 +26,9 @@ public:
 
 Demo::Demo()
 {
+	// this component requires pointers of user-defined type VariableAccessPtr,
+	// its performance is close to direct access when pointing to a memory address,
+	// and is better than std::function wrapper when pointing to a member function.
 	std::vector<VariableAccessPtr> vect_ptr;
 	VariableAccessPtr ptr1 = MemberFuncPtr<Demo, &Demo::read_var1>(this),
 	                  ptr2 = MemberFuncPtr<Demo, &Demo::read_var2>(this);
@@ -42,7 +45,7 @@ void Demo::run()
 	// current thread immediately. If you need to change options of the recorder,
 	// you must have another thread to do it.
 
-	this->t_start = system_clock::now();
+	this->t_start = steady_clock::now();
 	
 #ifndef _WIN32
 	this->frontend.open();
@@ -53,7 +56,7 @@ void Demo::run()
 
 inline float Demo::t()
 {
-	system_clock::time_point t_now = system_clock::now();
+	steady_clock::time_point t_now = steady_clock::now();
 	return (t_now - this->t_start).count() / 1000.0 / 1000.0 / 1000.0; //nanoseconds to seconds
 }
 
