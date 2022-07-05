@@ -346,7 +346,7 @@ void Recorder::record_loop()
 			if (check_time_interval <= 5) break;
 			Glib::usleep(check_time_interval);
 		}
-		while (steady_clock::now() < t); //dead loop at last, no more than 10 us
+		while (steady_clock::now() < t); //empty loop at last, no more than 10 us
 		// note: time cost between each loop cannot be ignored.
 	}
 }
