@@ -307,10 +307,11 @@ void Recorder::record_loop()
 	using namespace std::this_thread;
 	
 	steady_clock::time_point time_last_refresh = steady_clock::now();
-	unsigned int refresh_interval = this->interval;
+	unsigned int refresh_interval = this->interval; long int check_time_interval;
 	if (refresh_interval < 20) refresh_interval = 20; //maximum graph refresh rate: 50 Hz
 	
 	steady_clock::time_point t = steady_clock::now();
+	
 	while (this->flag_recording) {
 		// read and record current values of variables
 		for (unsigned int i = 0; i < this->var_cnt; i++)
@@ -337,12 +338,15 @@ void Recorder::record_loop()
 		}
 		
 		t += microseconds((int)(this->interval * 1000.0));
-		if (t > steady_clock::now()) {
-			// performance of Glib::usleep() is better than this_thread::sleep_until() on Windows
-			while (t > steady_clock::now()) Glib::usleep(100);
-		} else
-			t = steady_clock::now(); //rarely happens
+		if (t <= steady_clock::now()) continue; //rarely happens
 		
+		// better than this_thread::sleep_until() on Windows
+		while (true) {
+			check_time_interval = (t - steady_clock::now()).count() / 1000 / 2; //us
+			if (check_time_interval <= 5) break;
+			Glib::usleep(check_time_interval);
+		}
+		while (steady_clock::now() < t); //dead loop at last, no more than 10 us
 		// note: time cost between each loop cannot be ignored.
 	}
 }

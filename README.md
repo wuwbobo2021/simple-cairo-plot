@@ -48,4 +48,5 @@ MemberFuncPtr<typename T, float (T::*F)()>(T* pobj)
 ## Known Problems
 1. On Windows, segmentation fault will be produced when the thread created by `Frontend` exits. Use `Frontend::run()` instead of `Frontend::open()` (which creates a new thread for `Gtk::Application::run()`) on Windows, especially if you need to do nessecary things after the window is closed by the user.
 2. It seems like the record process can be interrupted by the environment, this causes missing of data and unsmooth curves on the graph. It works very well on XFCE, and is acceptable on GNOME and KDE, but the unsmooth effect can be significant on Windows that the delay can sometimes exceed 20 ms.
-3. It has not been migrated to `gtkmm-4.0`, partly because the repository of newest distributions of Debian and Ubuntu don't contain this new version.
+3. Limited by software timer accuracy, it is IMPOSSIBLE for the recorder to keep its data sampling frequency higher than 10 kHz (0.1 ms interval). The higher the frequency, the lower the stability.
+4. It has not been migrated to `gtkmm-4.0`, partly because the repository of newest distributions of Debian and Ubuntu don't contain this new version.
