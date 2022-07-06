@@ -103,7 +103,7 @@ class Recorder: public Gtk::Box
 	
 	Gtk::Scrollbar scrollbar; Gtk::Label space_left_of_scroll; Gtk::Box scrollbox; Gtk::Box box_var_names;
 	Glib::Dispatcher dispatcher_range_update;
-	bool flag_on_zoom = false;
+	bool flag_goto_end = true, flag_on_zoom = false;
 	
 	std::thread* thread_timer = NULL;
 	bool flag_recording = false;

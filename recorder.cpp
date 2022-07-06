@@ -175,8 +175,7 @@ bool Recorder::open_csv(std::string& file_path)
 	
 	if (head) return false; //empty file, head not parsed
 	
-	this->set_index_range();
-	this->scrollbar.get_adjustment()->set_value(0);
+	this->scroll_range_update();
 	this->refresh_areas(true, true);
 	return suc;
 }
@@ -229,15 +228,20 @@ bool Recorder::set_interval(float new_interval)
 	return true;
 }
 
-bool Recorder::set_index_range(unsigned int range_width)
+bool Recorder::set_index_range(unsigned int range_width) //side effect: scroll to index 0
 {
 	if (! this->var_cnt) return false;
+	if (range_width + 1 > this->bufs[0].size()) return false;
+	
 	if (range_width == 0)
 		range_width = this->areas[0].get_range_x().length();
 	
 	for (unsigned int i = 0; i < this->var_cnt; i++)
 		this->areas[i].set_range_x(AxisRange(0, range_width)); //option_auto_goto_end is enabled by default
+	
 	this->scrollbar.get_adjustment()->set_page_size(range_width);
+	if (!this->flag_recording || !this->flag_goto_end)
+		this->scrollbar.get_adjustment()->set_value(0);
 	
 	return true;
 }
@@ -346,33 +350,36 @@ void Recorder::record_loop()
 			if (check_time_interval <= 5) break;
 			Glib::usleep(check_time_interval);
 		}
-		while (steady_clock::now() < t); //empty loop at last, no more than 10 us
+		while (steady_clock::now() < t); //dead loop at last, no more than 10 us
 		// note: time cost between each loop cannot be ignored.
 	}
+}
+
+void Recorder::scroll_range_update()
+{
+	Glib::RefPtr<Gtk::Adjustment> adj = this->scrollbar.get_adjustment();
+	unsigned int pre_adj_right = adj->get_value() + adj->get_page_size(),
+				 new_upper = this->bufs[0].count() - 1;
+	
+	this->flag_goto_end = (pre_adj_right >= adj->get_upper() || pre_adj_right >= new_upper);
+	adj->set_upper(this->bufs[0].count() - 1);
+	if (this->flag_goto_end)
+		adj->set_value(adj->get_upper() - adj->get_page_size());
 }
 
 void Recorder::on_scroll()
 {	
 	Glib::RefPtr<Gtk::Adjustment> adj = this->scrollbar.get_adjustment();
 	unsigned int val = adj->get_value();
-	bool goto_end = (val >= adj->get_upper() - adj->get_page_size());
+	this->flag_goto_end = (val >= adj->get_upper() - adj->get_page_size());
 	
 	for (unsigned int i = 0; i < this->var_cnt; i++) {
-		this->areas[i].option_auto_goto_end = goto_end;
-		if (goto_end == false || this->flag_on_zoom)
+		this->areas[i].option_auto_goto_end = this->flag_goto_end;
+		if (this->flag_goto_end == false || this->flag_on_zoom)
 			this->areas[i].set_range_x(AxisRange(val, val + adj->get_page_size()));
 	}
 	
 	if (! this->flag_recording) this->refresh_areas(true);
-}
-
-void Recorder::scroll_range_update()
-{
-	Glib::RefPtr<Gtk::Adjustment> adj = this->scrollbar.get_adjustment();
-	bool goto_end = (adj->get_value() >= adj->get_upper() - adj->get_page_size());
-	adj->set_upper(this->bufs[0].count() - 1);
-	if (goto_end)
-		adj->set_value(adj->get_upper() - adj->get_page_size());
 }
 
 bool Recorder::on_button_press(GdkEventButton *event)

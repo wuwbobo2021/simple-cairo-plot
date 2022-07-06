@@ -26,6 +26,8 @@ class PlottingArea: public Gtk::DrawingArea
 	unsigned int axis_x_divider = 5, axis_y_divider = 6;
 	float axis_x_unit = 1; //it should be the data interval, index values are multiplied by the unit
 	
+	unsigned int index_step = 1; //it will be adjusted when range_x is too wide
+	
 	Gdk::RGBA color_grid, color_text; //auto set in PlottingArea::on_style_updated()
 	
 	// used for auto-refresh mode

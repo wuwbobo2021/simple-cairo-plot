@@ -74,9 +74,10 @@ CircularBuffer::~CircularBuffer()
 	if (this->buf != NULL) delete[] this->buf;
 }
 
-AxisRange CircularBuffer::get_value_range(const AxisRange& range)
+AxisRange CircularBuffer::get_value_range(const AxisRange& range, unsigned int chk_step)
 {
 	if (this->cnt == 0) return AxisRange(0, 0);
+	if (chk_step == 0 || chk_step >= this->cnt / 2) chk_step = 1;
 	
 	this->mtx.lock();
 	unsigned int il = range.min(), ir = range.max();
@@ -86,11 +87,11 @@ AxisRange CircularBuffer::get_value_range(const AxisRange& range)
 	using std::numeric_limits;
 	float cur, min = numeric_limits<float>::max(), max = numeric_limits<float>::min();
 	float* p = this->get_item_addr(il);
-	for (unsigned int i = il; i <= ir; i++) {
+	for (unsigned int i = il; i <= ir; i += chk_step) {
 		cur = *p;
 		if (cur < min) min = cur;
 		if (cur > max) max = cur;
-		if (p < this->bufend) p++; else p = this->buf;
+		p += chk_step; if (p > this->bufend) p -= this->bufsize;
 	}
 	
 	if (min > max)

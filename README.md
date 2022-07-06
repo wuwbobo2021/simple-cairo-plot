@@ -2,20 +2,25 @@
 An easy-to-use component for continuous recording and plotting of variables. it depends on `gtkmm-3.0`, and is implemented with Cairo.
 
 ## Demo
+Creating static library:
 ```
 git clone https://github.com/wuwbobo2021/simple-cairo-plot
 mv simple-cairo-plot/demo.cpp .
 cd simple-cairo-plot
-g++ circularbuffer.cpp plottingarea.cpp recorder.cpp frontend.cpp `pkg-config gtkmm-3.0 --cflags --libs` -O3 -shared -fPIC -o ../libsimple-cairo-plot.a
+g++ -c circularbuffer.cpp plottingarea.cpp recorder.cpp frontend.cpp `pkg-config gtkmm-3.0 --cflags --libs` -O3
+ar rcs libsimplecairoplot.a circularbuffer.o plottingarea.o recorder.o frontend.o
 cd ..
-g++ demo.cpp `pkg-config gtkmm-3.0 --cflags --libs` -I./simple-cairo-plot -L. -lsimple-cairo-plot -O3 -o test_program
+g++ demo.cpp -I./simple-cairo-plot -L./simple-cairo-plot -lsimplecairoplot `pkg-config gtkmm-3.0 --cflags --libs` -O3 -o test_program
 ./test_program
 ```
-For single executable file:
+Creating shared library:
 ```
 git clone https://github.com/wuwbobo2021/simple-cairo-plot
 mv simple-cairo-plot/demo.cpp .
-g++ simple-cairo-plot/circularbuffer.cpp simple-cairo-plot/plottingarea.cpp simple-cairo-plot/recorder.cpp simple-cairo-plot/frontend.cpp demo.cpp -I./simple-cairo-plot `pkg-config gtkmm-3.0 --cflags --libs` -O3 -o test_program
+cd simple-cairo-plot
+g++ circularbuffer.cpp plottingarea.cpp recorder.cpp frontend.cpp `pkg-config gtkmm-3.0 --cflags --libs` -O3 -shared -fPIC -o ../libsimplecairoplot.so
+cd ..
+g++ demo.cpp `pkg-config gtkmm-3.0 --cflags --libs` -I./simple-cairo-plot -L. -lsimplecairoplot -O3 -o test_program
 ./test_program
 ```
 You can modify `demo.cpp` to change the wave form and make other adjustments, like speed, buffer size or axis-y range.

@@ -115,7 +115,12 @@ bool PlottingArea::set_range_x(AxisRange range)
 {
 	if (range.length() == 0) return false;
 	if (! this->source->is_valid_range(range)) return false;
-	this->range_x = range; return true;
+	this->range_x = range;
+	
+	this->index_step = 1;
+	while (range.length() / this->index_step > 8192)
+		this->index_step++;
+	return true;
 }
 
 void PlottingArea::range_x_goto_end()
@@ -139,7 +144,7 @@ void PlottingArea::range_y_auto_set(bool adapt)
 	if (this->source->count() <= 1)
 		this->range_y.set(0, 10);
 	else {
-		AxisRange range_tight = this->source->get_value_range(this->range_x);
+		AxisRange range_tight = this->source->get_value_range(this->range_x, this->index_step);
 		if (adapt == false && this->range_y.contain(range_tight)) return;
 		
 		float min = range_tight.min(), max = range_tight.max();
@@ -217,15 +222,22 @@ Gtk::Allocation PlottingArea::draw_grid(const Cairo::RefPtr<Cairo::Context>& cr)
 	if (inner_x2 - inner_x1 < 10 || inner_y2 - inner_y1 < 10)
 		return Gtk::Allocation(0, 0, 0, 0);
 	
-	cr->set_line_width(1.0);
 	set_cr_color(cr, this->color_grid);
 	
+	// draw border
+	cr->set_line_width(2.0);
+	cr->rectangle(inner_x1 + 1.0, inner_y1 + 1.0,
+	              inner_x2 - inner_x1 - 2.0, inner_y2 - inner_y1 - 2.0);
+	cr->stroke();
+	
+	//draw grid
 	float gx_cur, gy_cur;
+	cr->set_line_width(1.0);
 	
 	// draw vertical lines for axis x
 	AxisRange range_grid_x(0, this->axis_x_divider),
 	          alloc_x(inner_x1, inner_x2);
-	for (unsigned int i = 0; i <= this->axis_x_divider; i++) {
+	for (unsigned int i = 1; i < this->axis_x_divider; i++) {
 		gx_cur = range_grid_x.map(i, alloc_x);
 		cr->move_to(gx_cur, inner_y1);
 		cr->line_to(gx_cur, inner_y2);
@@ -234,7 +246,7 @@ Gtk::Allocation PlottingArea::draw_grid(const Cairo::RefPtr<Cairo::Context>& cr)
 	// draw horizontal lines for axis y
 	AxisRange range_grid_y(0, this->axis_y_divider),
 	          alloc_y(inner_y1, inner_y2);
-	for (unsigned int i = 0; i <= this->axis_y_divider; i++) {
+	for (unsigned int i = 1; i < this->axis_y_divider; i++) {
 		gy_cur = range_grid_y.map_reverse(i, alloc_y);
 		cr->move_to(inner_x1, gy_cur);
 		cr->line_to(inner_x2, gy_cur);
@@ -290,13 +302,13 @@ void PlottingArea::plot(const Cairo::RefPtr<Cairo::Context>& cr, Gtk::Allocation
 	
 	AxisRange alloc_y(alloc.get_y(), alloc.get_y() + alloc.get_height());
 	float w_cur = alloc.get_x(),
-	      w_unit = alloc.get_width() / this->range_x.length();
+	      w_unit = alloc.get_width() * this->index_step / this->range_x.length();
 	float val_first = (*this->source)[this->range_x.min()];
 	cr->move_to(w_cur, this->range_y.map_reverse(val_first, alloc_y));
 	
 	for (unsigned int i = this->range_x.min() + 1;
 	                  i <= this->range_x.max() && i < this->source->count();
-	                  i ++) {
+	                  i += this->index_step) {
 		w_cur += w_unit;
 		cr->line_to(w_cur, this->range_y.map_reverse((*this->source)[i], alloc_y));
 	}

@@ -41,7 +41,7 @@ public:
 	bool is_full() const;
 	unsigned long int count_discarded() const; 
 	bool is_valid_range(const AxisRange& range) const;
-	AxisRange get_value_range(const AxisRange& range);
+	AxisRange get_value_range(const AxisRange& range, unsigned int chk_step = 1);
 	
 	void clear(bool clear_history_count = false);
 	
