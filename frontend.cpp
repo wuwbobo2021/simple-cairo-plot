@@ -43,8 +43,9 @@ void Frontend::open()
 Recorder& Frontend::recorder() const
 {
 	unsigned int wait_ms = 0;
-	while (!this->window && wait_ms++ < 5000)
-		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	while (!this->window && wait_ms < 5000) {
+		std::this_thread::sleep_for(std::chrono::milliseconds(10)); wait_ms += 10;
+	}
 	if (! this->window)
 		throw std::runtime_error("Frontend::recorder(): frontend is not opened.");
 	return *this->rec;
@@ -83,6 +84,7 @@ void Frontend::app_run()
 	Glib::RefPtr<Gtk::Application> app = Gtk::Application::create(Frontend::App_Name);
 	this->dispatcher_gtk = new Glib::Dispatcher;
 	this->create_window();
+	this->create_file_dialog();
 	
 	app->run(*this->window);
 	
@@ -121,7 +123,10 @@ void Frontend::create_window()
 	this->window->set_default_size(640, 400);
 	this->window->add(*box);
 	this->window->show_all_children();
+}
 
+void Frontend::create_file_dialog()
+{
 	Glib::RefPtr<Gtk::FileFilter> filter = Gtk::FileFilter::create();
 	filter->set_name("CSV files (.csv)");
 	filter->add_pattern("*.csv"); filter->add_mime_type("text/csv");

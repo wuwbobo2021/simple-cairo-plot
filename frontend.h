@@ -26,6 +26,7 @@ class Frontend: public sigc::trackable
 	Gtk::Button* button_start_stop;
 	
 	void create_window();
+	void create_file_dialog();
 	void app_run();
 	
 	void on_buffers_full();
