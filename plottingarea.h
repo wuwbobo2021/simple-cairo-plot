@@ -23,10 +23,11 @@ class PlottingArea: public Gtk::DrawingArea
 	AxisRange range_x = AxisRange(0, 100), range_y = AxisRange(0, 10);
 	
 	// specifies how many segments the axis should be divided into by the grid
-	unsigned int axis_x_divider = 5, axis_y_divider = 6;
 	float axis_x_unit = 1; //it should be the data interval, index values are multiplied by the unit
-	
+	unsigned int axis_x_divider = 5, axis_y_divider = 6;
 	unsigned int index_step = 1; //it will be adjusted when range_x is too wide
+	
+	float axis_y_length_min = 0; //minimum range length of y-axis range in auto-set mode
 	
 	Gdk::RGBA color_grid, color_text; //auto set in PlottingArea::on_style_updated()
 	
@@ -54,7 +55,7 @@ public:
 	
 	bool option_auto_goto_end = true; //whether or not range_x should goto the end of buffer automatically
 	bool option_auto_set_range_y = true; //whether or not range_y should be determined automatically
-	bool option_auto_set_zero_bottom = true; //if the bottom of range y should be zero in auto set mode
+	bool option_auto_set_zero_bottom = true; //if the bottom of range y should be zero in auto-set mode
 	
 	bool option_show_axis_x_values = true;
 	bool option_show_axis_y_values = true;
@@ -72,7 +73,8 @@ public:
 	AxisRange get_range_y() const;
 	
 	bool set_axis_divider(unsigned int x_div, unsigned int y_div);
-	bool set_axis_x_unit(float unit);	
+	bool set_axis_x_unit(float unit);
+	bool set_axis_y_range_length_min(float length_min);
 	
 	// functions only for manual refresh mode except set_range_x()
 	// (the only way to change the index range width even in automatic mode).

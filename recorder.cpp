@@ -46,6 +46,7 @@ void Recorder::init(std::vector<VariableAccessPtr>& ptrs, unsigned int buf_size)
 	
 	Gtk::Label* label_var_bar_ind = Gtk::manage(new Gtk::Label("Variables:"));
 	this->box_var_names.pack_start(*label_var_bar_ind, Gtk::PACK_SHRINK);
+	this->box_var_names.pack_end(label_axis_y_unit, Gtk::PACK_SHRINK);
 	
 	for (unsigned int i = 0; i < this->var_cnt; i++) {
 		this->ptrs[i] = ptrs[i];
@@ -220,11 +221,18 @@ sigc::signal<void()> Recorder::signal_full()
 bool Recorder::set_interval(float new_interval)
 {
 	if (new_interval <= 0) return false;
-	
 	this->interval = new_interval;
-	for (unsigned int i = 0; i < this->var_cnt; i++)
-		this->areas[i].set_axis_x_unit(new_interval / 1000.0);
-	
+	this->set_index_unit(new_interval / 1000.0);
+	this->set_redraw_interval(new_interval);
+	return true;
+}
+
+bool Recorder::set_redraw_interval(unsigned new_redraw_interval)
+{
+	if (new_redraw_interval == 0) return false;
+	this->redraw_interval = new_redraw_interval;
+	if (this->redraw_interval < 20)
+		this->redraw_interval = 20; //maximum graph refresh rate: 50 Hz
 	return true;
 }
 
@@ -251,7 +259,17 @@ bool Recorder::set_index_unit(float unit)
 	if (unit <= 0) return false;
 	for (unsigned int i = 0; i < this->var_cnt; i++)
 		this->areas[i].set_axis_x_unit(unit);
+	
+	std::ostringstream sst; sst.precision(6);
+	sst << (this->interval / 1000.0) / unit;
+	label_axis_y_unit.set_text("Unit-Y: " + sst.str() + " s");
 	return true;
+}
+
+bool Recorder::set_axis_y_range_length_min(unsigned int index, float length_min)
+{
+	if (index > this->var_cnt - 1) return false;
+	return this->areas[index].set_axis_y_range_length_min(length_min);
 }
 
 bool Recorder::set_y_range(unsigned int index, AxisRange range)
@@ -310,11 +328,9 @@ void Recorder::record_loop()
 	using namespace std::chrono;
 	using namespace std::this_thread;
 	
-	steady_clock::time_point time_last_refresh = steady_clock::now();
-	unsigned int refresh_interval = this->interval; long int check_time_interval;
-	if (refresh_interval < 20) refresh_interval = 20; //maximum graph refresh rate: 50 Hz
-	
-	steady_clock::time_point t = steady_clock::now();
+	long int check_time_interval;
+	steady_clock::time_point t = steady_clock::now(),
+	                         time_last_refresh = steady_clock::now();
 	
 	while (this->flag_recording) {
 		// read and record current values of variables
@@ -335,7 +351,7 @@ void Recorder::record_loop()
 			this->dispatcher_range_update.emit(); //calls scroll_range_update() in main thread
 		}
 		
-		if (steady_clock::now() >= time_last_refresh + milliseconds(refresh_interval)) {
+		if (steady_clock::now() >= time_last_refresh + milliseconds(this->redraw_interval)) {
 			// refresh graph view
 			time_last_refresh = steady_clock::now();
 			this->refresh_areas();
@@ -379,7 +395,8 @@ void Recorder::on_scroll()
 			this->areas[i].set_range_x(AxisRange(val, val + adj->get_page_size()));
 	}
 	
-	if (! this->flag_recording) this->refresh_areas(true);
+	if (!this->flag_recording || this->interval >= 100)
+		this->refresh_areas(true);
 }
 
 bool Recorder::on_button_press(GdkEventButton *event)
@@ -400,14 +417,15 @@ bool Recorder::on_button_press(GdkEventButton *event)
 		range_x_new.scale(0.5, x);
 		range_x_new.set_int();
 		if (range_x_new.length() < 2) return true;
-	} else {
+	} else
 		range_x_new.scale(2, x);
-		range_x_new = this->bufs[0].range().fit_in_range(range_x_new);
-	}
+	
+	range_x_new.fit_by_range(this->bufs[0].range());
 	
 	this->flag_on_zoom = true;
 	Glib::RefPtr<Gtk::Adjustment> adj = this->scrollbar.get_adjustment();
 	adj->configure(range_x_new.min(), 0, this->bufs[0].count() - 1, 1, 200, range_x_new.length());
+	this->on_scroll(); //strange: Gtk::Adjustment::configure() doesn't emit signal_value_changed
 	this->flag_on_zoom = false;
 	return true;
 }

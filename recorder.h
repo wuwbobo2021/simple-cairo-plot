@@ -101,14 +101,15 @@ class Recorder: public Gtk::Box
 	CircularBuffer* bufs = NULL;
 	PlottingArea* areas = NULL; Gtk::EventBox* eventboxes = NULL;
 	
-	Gtk::Scrollbar scrollbar; Gtk::Label space_left_of_scroll; Gtk::Box scrollbox; Gtk::Box box_var_names;
+	Gtk::Scrollbar scrollbar; Gtk::Label space_left_of_scroll; Gtk::Box scrollbox;
+	Gtk::Box box_var_names; Gtk::Label label_axis_y_unit;
 	Glib::Dispatcher dispatcher_range_update;
 	bool flag_goto_end = true, flag_on_zoom = false;
 	
 	std::thread* thread_timer = NULL;
 	bool flag_recording = false;
 	bool option_record_until_full = false;
-	float interval = 10; //in milliseconds
+	float interval = 10; unsigned int redraw_interval = 20; //in milliseconds
 	
 	bool flag_not_full = true;
 	sigc::signal<void()> sig_full;
@@ -137,9 +138,11 @@ public:
 	sigc::signal<void()> signal_full();
 	
 	bool set_interval(float new_interval); //interval of reading current values, in milliseconds
+	bool set_redraw_interval(unsigned int new_redraw_interval); //set manually if a slower redraw rate is required to reduce CPU usage
 	
 	bool set_index_range(unsigned int range_width = 0); //range_width + 1 is the amount of data shows in each area
 	bool set_index_unit(float unit); //it should be the data interval, index values are multiplied by the unit
+	bool set_axis_y_range_length_min(unsigned int index, float length_min); //minimum range length of y-axis range in auto-set mode
 	bool set_y_range(unsigned int index, AxisRange range); //useless when option_auto_set_range_y is set
 	bool set_axis_divider(unsigned int x_div, unsigned int y_div); //how many segments the axis should be divided into
 	
@@ -148,7 +151,7 @@ public:
 	void set_option_auto_set_zero_bottom(bool set); //if the bottom of range y should be zero in auto set mode
 	void set_option_show_axis_x_values(bool set); //only that of the bottommost is shown
 	void set_option_show_axis_y_values(bool set); //shown in left border of each area
-	void set_option_anti_alias(bool set);
+	void set_option_anti_alias(bool set); //default: false
 };
 
 inline bool Recorder::is_recording() const

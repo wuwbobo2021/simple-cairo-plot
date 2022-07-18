@@ -111,6 +111,13 @@ bool PlottingArea::set_axis_x_unit(float unit)
 	return true;
 }
 
+bool PlottingArea::set_axis_y_range_length_min(float length_min)
+{
+	if (length_min < 0) return false;
+	this->axis_y_length_min = length_min;
+	return true;
+}
+
 bool PlottingArea::set_range_x(AxisRange range)
 {
 	if (range.length() == 0) return false;
@@ -141,26 +148,35 @@ bool PlottingArea::set_range_y(AxisRange range)
 
 void PlottingArea::range_y_auto_set(bool adapt)
 {
-	if (this->source->count() <= 1)
-		this->range_y.set(0, 10);
-	else {
-		AxisRange range_tight = this->source->get_value_range(this->range_x, this->index_step);
-		if (adapt == false && this->range_y.contain(range_tight)) return;
+	if (this->source->count() <= 1) {
+		this->range_y.set(0, 10); return;
+	}
+	
+	AxisRange range_tight = this->source->get_value_range(this->range_x, this->index_step);
+	if (adapt == false && this->range_y.contain(range_tight)) return;
+	
+	float min = range_tight.min(), max = range_tight.max();
+	
+	if (min < 0 || this->option_auto_set_zero_bottom == false) {
+		if (max > min) {
+			this->range_y.set(min, max); this->range_y.scale(1.2);
+		} else
+			this->range_y.set(min - 0.2*min, min + 0.2*min); //max = min < 0, rare
 		
-		float min = range_tight.min(), max = range_tight.max();
+		if (this->range_y.length() < this->axis_y_length_min)
+			this->range_y.scale(this->axis_y_length_min / this->range_y.length());
 		
-		if (min < 0 || this->option_auto_set_zero_bottom == false) {
-			if (max > min) {
-				this->range_y.set(min, max); this->range_y.scale(1.2);
-			} else
-				this->range_y.set(min - 0.2*min, min + 0.2*min); //max = min < 0, rare
-		} else {
-			// without any minus value, always set lower bound to 0
-			if (max > 0)
-				this->range_y.set(0, 1.2*max);
-			else
-				this->range_y.set(0, 10); //min = max = 0, rare
-		}
+		if (min >= 0 && this->range_y.min() < 0)
+			this->range_y.min_move_to(0);
+	} else {
+		// without any minus value, always set lower bound to 0
+		if (max > 0)
+			this->range_y.set(0, 1.2*max);
+		else
+			this->range_y.set(0, 10); //min = max = 0, rare
+		
+		if (this->range_y.length() < this->axis_y_length_min)
+			this->range_y.scale(this->axis_y_length_min / this->range_y.length(), 0);
 	}
 }
 
@@ -307,7 +323,7 @@ void PlottingArea::plot(const Cairo::RefPtr<Cairo::Context>& cr, Gtk::Allocation
 	cr->move_to(w_cur, this->range_y.map_reverse(val_first, alloc_y));
 	
 	for (unsigned int i = this->range_x.min() + 1;
-	                  i <= this->range_x.max() && i < this->source->count();
+	                  i <= this->range_x.max() + 1 && i < this->source->count();
 	                  i += this->index_step) {
 		w_cur += w_unit;
 		cr->line_to(w_cur, this->range_y.map_reverse((*this->source)[i], alloc_y));

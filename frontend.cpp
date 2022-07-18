@@ -25,7 +25,7 @@ Frontend::~Frontend()
 void Frontend::init(std::vector<VariableAccessPtr>& ptrs, unsigned int buf_size)
 {
 	if (ptrs.size() == 0 || buf_size < 2)
-		throw std::runtime_error("Frontend::init: invalid parameter.");
+		throw std::runtime_error("Frontend::init(): invalid parameter.");
 	
 	this->ptrs = ptrs; this->buf_size = buf_size;
 }

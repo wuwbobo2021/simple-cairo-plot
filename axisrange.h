@@ -26,7 +26,7 @@ public:
 	bool contain(AxisRange range) const;
 	float cut_value(float val) const;
 	AxisRange cut_range(AxisRange range) const;
-	AxisRange fit_in_range(AxisRange range) const;
+	AxisRange fit_range(AxisRange range) const;
 	float map(float val, float target_width, bool reverse = false) const;
 	float map(float val, AxisRange range, bool reverse = false) const;
 	float map_reverse(float val, float target_width) const;
@@ -36,6 +36,7 @@ public:
 	void move(float offset);
 	void min_move_to(float min); //max moves with min
 	void max_move_to(float max); //min moves with max
+	void fit_by_range(AxisRange range);
 	void scale(float factor, float cursor);
 	void scale(float factor);
 	void set_int();
@@ -86,7 +87,7 @@ inline AxisRange AxisRange::cut_range(AxisRange range) const
 	return AxisRange(this->cut_value(range.min()), this->cut_value(range.max()));
 }
 
-inline AxisRange AxisRange::fit_in_range(AxisRange range) const
+inline AxisRange AxisRange::fit_range(AxisRange range) const
 {
 	if (this->contain(range)) return range;
 	if (range.length() >= this->val_length) return *this;
@@ -150,6 +151,12 @@ inline void AxisRange::max_move_to(float max)
 	float offset = max - this->val_max;
 	this->val_max = max;
 	this->val_min += offset;
+}
+
+inline void AxisRange::fit_by_range(AxisRange range)
+{
+	AxisRange range_new = range.fit_range(*this);
+	this->set(range_new.min(), range_new.max());
 }
 
 inline void AxisRange::scale(float factor, float cursor)
