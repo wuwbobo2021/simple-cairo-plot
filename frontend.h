@@ -37,7 +37,8 @@ class Frontend: public sigc::trackable
 	void close_window();
 	
 public:
-	const std::string App_Name = "org.simple-cairo-plot.frontend";
+	// two frontends on the same computer must have different `app_name`.
+	std::string app_name = "org.simple-cairo-plot.frontend";
 	std::string title = "Recorder";
 	
 	Frontend(); void init(std::vector<VariableAccessPtr>& ptrs, unsigned int buf_size);
@@ -54,4 +55,3 @@ public:
 
 }
 #endif
-

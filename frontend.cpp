@@ -81,7 +81,7 @@ void Frontend::close()
 
 void Frontend::app_run()
 {
-	Glib::RefPtr<Gtk::Application> app = Gtk::Application::create(Frontend::App_Name);
+	Glib::RefPtr<Gtk::Application> app = Gtk::Application::create(this->app_name);
 	this->dispatcher_gtk = new Glib::Dispatcher;
 	this->create_window();
 	this->create_file_dialog();

@@ -286,6 +286,11 @@ Gtk::Allocation PlottingArea::draw_grid(const Cairo::RefPtr<Cairo::Context>& cr)
 				cr->move_to(gx_cur, inner_y2 + 10);
 				cr->show_text(float_to_str(val, sst));
 			}
+			
+			if (this->axis_x_unit_name.length() > 0) {
+				cr->move_to(inner_x2 - (this->axis_x_unit_name.length() + 2) * 4.5, inner_y2 + 10);
+				cr->show_text('(' + this->axis_x_unit_name + ')');
+			}
 		}
 		
 		if (this->option_show_axis_y_values) {
@@ -294,7 +299,12 @@ Gtk::Allocation PlottingArea::draw_grid(const Cairo::RefPtr<Cairo::Context>& cr)
 				gy_cur = range_grid_y.map_reverse(i, alloc_y);
 				float val = range_grid_y.map(i, this->range_y);
 				cr->move_to(0, gy_cur);
-				cr->show_text(float_to_str(val, sst));
+				if (i < this->axis_y_divider || this->axis_y_unit_name.length() == 0)
+					cr->show_text(float_to_str(val, sst));
+				else {
+					gy_cur -= 2; cr->move_to(0, gy_cur);
+					cr->show_text(float_to_str(val, sst) + '(' + this->axis_y_unit_name + ')');
+				}
 			}
 		}
 		

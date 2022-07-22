@@ -32,7 +32,8 @@ class VariableAccessPtr
 	void* addr_obj = NULL;
 
 public:
-	Gdk::RGBA color_plot; std::string name_csv = "", name_friendly = "";
+	std::string unit_name = "", name_csv = ""; Glib::ustring name_friendly = "";
+	Gdk::RGBA color_plot;
 	
 	VariableAccessPtr();
 	VariableAccessPtr(const float* pd);
@@ -106,7 +107,8 @@ class Recorder: public Gtk::Box
 	Glib::Dispatcher dispatcher_range_update;
 	bool flag_goto_end = true, flag_on_zoom = false;
 	
-	std::thread* thread_timer = NULL;
+	std::thread* thread_record = NULL,
+	           * thread_refresh = NULL;
 	bool flag_recording = false;
 	bool option_record_until_full = false;
 	float interval = 10; unsigned int redraw_interval = 20; //in milliseconds
@@ -116,6 +118,7 @@ class Recorder: public Gtk::Box
 	Glib::Dispatcher dispatcher_sig_full;
 	
 	void record_loop();
+	void refresh_loop();
 	void on_scroll();
 	bool on_button_press(GdkEventButton *event);
 	void scroll_range_update();

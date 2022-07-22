@@ -3,6 +3,7 @@
 
 #include "recorder.h"
 
+#include <cmath> //fabs()
 #include <chrono>
 #include <iostream>
 #include <fstream>
@@ -11,6 +12,7 @@
 #include <glibmm/timer.h>
 #include <gtkmm/adjustment.h>
 
+using namespace std::chrono;
 using namespace SimpleCairoPlot;
 
 Recorder::Recorder():
@@ -50,17 +52,22 @@ void Recorder::init(std::vector<VariableAccessPtr>& ptrs, unsigned int buf_size)
 	
 	for (unsigned int i = 0; i < this->var_cnt; i++) {
 		this->ptrs[i] = ptrs[i];
-		if (this->ptrs[i].name_csv == "") this->ptrs[i].name_csv = "var" + std::to_string(i + 1);
-		if (this->ptrs[i].name_friendly == "") this->ptrs[i].name_friendly = this->ptrs[i].name_csv;
-		Gtk::Label* label_name = Gtk::manage(new Gtk::Label(this->ptrs[i].name_friendly));
-		label_name->override_color(this->ptrs[i].color_plot);
-		this->box_var_names.pack_start(*label_name, Gtk::PACK_SHRINK);
-		
 		this->bufs[i].init(buf_size);
 		this->areas[i].init(& this->bufs[i]);
+		this->areas[i].axis_y_unit_name = this->ptrs[i].unit_name;
 		this->areas[i].color_plot = this->ptrs[i].color_plot;
 		this->eventboxes[i].add(this->areas[i]);
 		this->pack_start(this->eventboxes[i], Gtk::PACK_EXPAND_WIDGET);
+		
+		if (this->ptrs[i].name_csv == "") this->ptrs[i].name_csv = "var" + std::to_string(i + 1);
+		if (this->ptrs[i].name_friendly == "") this->ptrs[i].name_friendly = this->ptrs[i].name_csv;
+		Gtk::Label* label_name = Gtk::manage(new Gtk::Label(this->ptrs[i].name_friendly));
+		if (this->ptrs[i].unit_name == "")
+			label_name->set_label(this->ptrs[i].name_friendly);
+		else
+			label_name->set_label(this->ptrs[i].name_friendly + " (" + this->ptrs[i].unit_name + ')');
+		label_name->override_color(this->ptrs[i].color_plot);
+		this->box_var_names.pack_start(*label_name, Gtk::PACK_SHRINK);
 	}
 	
 	this->scrollbar.get_adjustment()->configure(0, 0, 200, 1, 200, 200); //uninitialized adjustment
@@ -110,10 +117,12 @@ bool Recorder::start()
 	
 	try {
 		this->flag_recording = true;
-		this->thread_timer = new std::thread(&Recorder::record_loop, this);
+		this->thread_record = new std::thread(&Recorder::record_loop, this);
+		this->thread_refresh = new std::thread(&Recorder::refresh_loop, this);
 	} catch (std::exception ex) {
 		this->flag_recording = false;
-		this->thread_timer = NULL;
+		if (this->thread_record) delete this->thread_record;
+		this->thread_record = this->thread_refresh = NULL;
 		return false;
 	}
 	
@@ -126,9 +135,10 @@ void Recorder::stop()
 	if (! this->flag_recording) return;
 	this->flag_recording = false;
 	
-	if (this->thread_timer) {
-		this->thread_timer->join();
-		delete this->thread_timer;
+	if (this->thread_record) {
+		this->thread_record->join(); this->thread_refresh->join();
+		delete this->thread_record; this->thread_record = NULL;
+		delete this->thread_refresh; this->thread_refresh = NULL;
 	}
 }
 
@@ -239,10 +249,12 @@ bool Recorder::set_redraw_interval(unsigned new_redraw_interval)
 bool Recorder::set_index_range(unsigned int range_width) //side effect: scroll to index 0
 {
 	if (! this->var_cnt) return false;
-	if (range_width + 1 > this->bufs[0].size()) return false;
+	if (range_width > this->bufs[0].size()) return false;
 	
 	if (range_width == 0)
 		range_width = this->areas[0].get_range_x().length();
+	else if (range_width == this->bufs[0].size())
+		range_width--;
 	
 	for (unsigned int i = 0; i < this->var_cnt; i++)
 		this->areas[i].set_range_x(AxisRange(0, range_width)); //option_auto_goto_end is enabled by default
@@ -254,15 +266,36 @@ bool Recorder::set_index_range(unsigned int range_width) //side effect: scroll t
 	return true;
 }
 
+inline bool almost_equal(float val1, float val2) {
+	return fabs(val1 - val2) <= (val1 + val2) / 2.0 / 1000.0;
+}
+
 bool Recorder::set_index_unit(float unit)
 {
 	if (unit <= 0) return false;
 	for (unsigned int i = 0; i < this->var_cnt; i++)
 		this->areas[i].set_axis_x_unit(unit);
 	
-	std::ostringstream sst; sst.precision(6);
-	sst << (this->interval / 1000.0) / unit;
-	label_axis_y_unit.set_text("Unit-Y: " + sst.str() + " s");
+	float axis_x_unit = (this->interval / 1000.0) / unit;
+	std::string axis_x_unit_name;
+	
+	if (almost_equal(axis_x_unit, 0.001 * 0.001))
+		axis_x_unit_name = "us";
+	else if (almost_equal(axis_x_unit, 0.001))
+		axis_x_unit_name = "ms";
+	else if (almost_equal(axis_x_unit, 1.0))
+		axis_x_unit_name = "s";
+	else if (almost_equal(axis_x_unit, 60.0))
+		axis_x_unit_name = "min";
+	else if (almost_equal(axis_x_unit, 3600.0))
+		axis_x_unit_name = "h";
+	else {
+		std::ostringstream sst; sst.precision(6); sst << axis_x_unit;
+		axis_x_unit_name = sst.str() + " s";
+	}
+	this->areas[this->var_cnt - 1].axis_x_unit_name = axis_x_unit_name;
+	label_axis_y_unit.set_label("Unit-Y: " + axis_x_unit_name);
+	
 	return true;
 }
 
@@ -325,12 +358,8 @@ void Recorder::set_option_anti_alias(bool set)
 
 void Recorder::record_loop()
 {
-	using namespace std::chrono;
-	using namespace std::this_thread;
-	
-	long int check_time_interval;
-	steady_clock::time_point t = steady_clock::now(),
-	                         time_last_refresh = steady_clock::now();
+	long int check_time_interval; //us
+	steady_clock::time_point t = steady_clock::now();
 	
 	while (this->flag_recording) {
 		// read and record current values of variables
@@ -343,18 +372,13 @@ void Recorder::record_loop()
 				this->flag_not_full = false;
 				if (this->option_record_until_full) {
 					this->flag_recording = false;
-					this->thread_timer->detach(); delete this->thread_timer;
+					this->thread_refresh->join(); delete this->thread_refresh;
+					this->thread_record->detach(); delete this->thread_record;
+					this->thread_record = this->thread_refresh = NULL;
 					this->dispatcher_sig_full.emit(); return;
 				} else
 					this->dispatcher_sig_full.emit();
 			}
-			this->dispatcher_range_update.emit(); //calls scroll_range_update() in main thread
-		}
-		
-		if (steady_clock::now() >= time_last_refresh + milliseconds(this->redraw_interval)) {
-			// refresh graph view
-			time_last_refresh = steady_clock::now();
-			this->refresh_areas();
 		}
 		
 		t += microseconds((int)(this->interval * 1000.0));
@@ -368,6 +392,28 @@ void Recorder::record_loop()
 		}
 		while (steady_clock::now() < t); //empty loop at last, no more than 10 us
 		// note: time cost between each loop cannot be ignored.
+	}
+}
+
+void Recorder::refresh_loop()
+{
+	long int check_time_interval = this->redraw_interval;
+	if (this->redraw_interval > 200) check_time_interval = 200;
+	check_time_interval *= 1000; //us
+	
+	steady_clock::time_point t_last_refresh = steady_clock::now();
+	
+	while (this->flag_recording) {
+		if (this->flag_not_full)
+			this->dispatcher_range_update.emit(); //calls scroll_range_update() in main thread
+		
+		if (steady_clock::now() >= t_last_refresh + milliseconds(this->redraw_interval)) {
+			// refresh graph view
+			t_last_refresh = steady_clock::now();
+			this->refresh_areas();
+		}
+		
+		Glib::usleep(check_time_interval);
 	}
 }
 
