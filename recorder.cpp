@@ -16,14 +16,14 @@ using namespace std::chrono;
 using namespace SimpleCairoPlot;
 
 Recorder::Recorder():
-	Box(Gtk::ORIENTATION_VERTICAL, 5),
+	Box(Gtk::ORIENTATION_VERTICAL, 10),
 	scrollbox(Gtk::ORIENTATION_HORIZONTAL, PlottingArea::Border_X_Left - 2),
 	scrollbar(Gtk::Adjustment::create(0, 0, 200, 1, 200, 200), Gtk::ORIENTATION_HORIZONTAL),
 	box_var_names(Gtk::ORIENTATION_HORIZONTAL, 20)
 {}
 
 Recorder::Recorder(std::vector<VariableAccessPtr>& ptrs, unsigned int buf_size):
-	Box(Gtk::ORIENTATION_VERTICAL, 5),
+	Box(Gtk::ORIENTATION_VERTICAL, 10),
 	scrollbox(Gtk::ORIENTATION_HORIZONTAL, PlottingArea::Border_X_Left - 2),
 	scrollbar(Gtk::Adjustment::create(0, 0, 200, 1, 200, 200), Gtk::ORIENTATION_HORIZONTAL),
 	box_var_names(Gtk::ORIENTATION_HORIZONTAL, 20)
