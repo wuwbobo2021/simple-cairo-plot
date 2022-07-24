@@ -1,8 +1,6 @@
 // by wuwbobo2021 <https://github.com/wuwbobo2021>, <wuwbobo@outlook.com>
 // If you have found bugs in this program, please pull an issue, or contact me.
 
-#include <string>
-#include <sstream>
 #include <chrono>
 
 #include "plottingarea.h"
@@ -123,10 +121,7 @@ bool PlottingArea::set_range_x(AxisRange range)
 	if (range.length() == 0) return false;
 	if (! this->source->is_valid_range(range)) return false;
 	this->range_x = range;
-	
-	this->index_step = 1;
-	while (range.length() / this->index_step > 8192)
-		this->index_step++;
+	this->adjust_index_step();
 	return true;
 }
 
@@ -196,12 +191,26 @@ void PlottingArea::refresh_loop() //in the timer thread
 
 bool PlottingArea::on_draw(const Cairo::RefPtr<Cairo::Context>& cr)
 {
+	this->adjust_index_step();
+	
 	if (this->flag_check_range_y) {
 		this->range_y_auto_set(this->flag_adapt);
 		this->flag_adapt = this->flag_check_range_y = false;
 	}
+	
 	this->plot(cr, this->draw_grid(cr));
 	return true;
+}
+
+void PlottingArea::adjust_index_step()
+{
+	unsigned int plot_data_amount_max = 4 * this->get_allocation().get_width();
+	if (plot_data_amount_max < 1024)
+		plot_data_amount_max = 1024;
+	
+	this->index_step = 1;
+	while (this->range_x.length() / this->index_step > plot_data_amount_max)
+		this->index_step++;
 }
 
 inline std::string float_to_str(float val, std::stringstream& sst)
@@ -273,9 +282,9 @@ Gtk::Allocation PlottingArea::draw_grid(const Cairo::RefPtr<Cairo::Context>& cr)
 	// print value labels for axis x, y
 	if (this->option_show_axis_x_values || this->option_show_axis_y_values) {
 		set_cr_color(cr, this->color_text);
-		std::stringstream sst; sst.precision(6);
 		
 		if (this->option_show_axis_x_values) {
+			sst.unsetf(std::ios::fixed); this->sst.precision(6);
 			AxisRange range_val_x(this->range_x);
 			range_val_x.move(this->source->count_discarded());
 			range_val_x.scale(this->axis_x_unit, 0);
@@ -284,7 +293,7 @@ Gtk::Allocation PlottingArea::draw_grid(const Cairo::RefPtr<Cairo::Context>& cr)
 				gx_cur = range_grid_x.map(i, alloc_x);
 				float val = range_grid_x.map(i, range_val_x);
 				cr->move_to(gx_cur, inner_y2 + 10);
-				cr->show_text(float_to_str(val, sst));
+				cr->show_text(float_to_str(val, this->sst));
 			}
 			
 			if (this->axis_x_unit_name.length() > 0) {
@@ -300,10 +309,10 @@ Gtk::Allocation PlottingArea::draw_grid(const Cairo::RefPtr<Cairo::Context>& cr)
 				float val = range_grid_y.map(i, this->range_y);
 				cr->move_to(0, gy_cur);
 				if (i < this->axis_y_divider || this->axis_y_unit_name.length() == 0)
-					cr->show_text(float_to_str(val, sst));
+					cr->show_text(float_to_str(val, this->sst));
 				else {
 					gy_cur -= 2; cr->move_to(0, gy_cur);
-					cr->show_text(float_to_str(val, sst) + '(' + this->axis_y_unit_name + ')');
+					cr->show_text(float_to_str(val, this->sst) + '(' + this->axis_y_unit_name + ')');
 				}
 			}
 		}

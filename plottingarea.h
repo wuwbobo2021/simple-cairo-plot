@@ -4,6 +4,7 @@
 #ifndef SIMPLE_CAIRO_PLOT_PLOTTING_AREA_H
 #define SIMPLE_CAIRO_PLOT_PLOTTING_AREA_H
 
+#include <sstream>
 #include <thread>
 
 #include <gdkmm/color.h>
@@ -21,7 +22,7 @@ class PlottingArea: public Gtk::DrawingArea
 	
 	// range of indexes in the buffer and y-axis values that are covered by the area
 	AxisRange range_x = AxisRange(0, 100), range_y = AxisRange(0, 10);
-	unsigned int index_step = 1; //it will be adjusted when range_x is too wide
+	unsigned int index_step = 1; //it will be adjusted according to the width of the area when range_x is too wide
 	
 	float axis_x_unit = 1; //it should be the data interval, index values are multiplied by the unit
 	unsigned int axis_x_divider = 5, axis_y_divider = 6; //how many segments the axis should be divided into by the grid
@@ -36,6 +37,8 @@ class PlottingArea: public Gtk::DrawingArea
 	bool flag_auto_refresh = false;
 	unsigned int refresh_interval = 40; //25 Hz
 	
+	std::stringstream sst; //used for printing value labels for the grid
+	
 	// used for the controlling the interval of range y auto setting
 	unsigned int counter1 = 0, counter2 = 0;
 	bool flag_check_range_y = false, flag_adapt = false;
@@ -46,6 +49,8 @@ class PlottingArea: public Gtk::DrawingArea
 	// inherits Gtk::Widget, implements drawing procedures
 	void on_style_updated() override;
 	bool on_draw(const Cairo::RefPtr<Cairo::Context>& cr) override;
+	
+	void adjust_index_step();
 	Gtk::Allocation draw_grid(const Cairo::RefPtr<Cairo::Context>& cr);
 	void plot(const Cairo::RefPtr<Cairo::Context>& cr, Gtk::Allocation alloc);
 	
