@@ -215,9 +215,8 @@ void PlottingArea::adjust_index_step()
 
 inline std::string float_to_str(float val, std::stringstream& sst)
 {
-	std::string str;
-	sst.clear(); sst << val; sst >> str;
-	return str;
+	sst.str(""); sst << val;
+	return sst.str();
 }
 
 inline void set_cr_color(const Cairo::RefPtr<Cairo::Context>& cr, const Gdk::RGBA& color)
@@ -281,6 +280,7 @@ Gtk::Allocation PlottingArea::draw_grid(const Cairo::RefPtr<Cairo::Context>& cr)
 	
 	// print value labels for axis x, y
 	if (this->option_show_axis_x_values || this->option_show_axis_y_values) {
+		sst.clear();
 		set_cr_color(cr, this->color_text);
 		
 		if (this->option_show_axis_x_values) {
