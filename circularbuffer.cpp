@@ -119,7 +119,9 @@ AxisRange CircularBuffer::get_value_range(AxisRange range, unsigned int chk_step
 	float cur, min = numeric_limits<float>::max(), max = numeric_limits<float>::lowest();
 	
 	AxisRange range_i_min_max_last_scan = this->range_to_rel(this->range_abs_i_min_max_last_scan);
-	if (range.contain(range_i_last_scan.max()) && range.contain(range_i_min_max_last_scan)) {
+	if (range_i_last_scan.contain(range.min()) && range.contain(range_i_last_scan.max())
+	&&  range.contain(range_i_min_max_last_scan))
+	{
 		imin = range_i_min_max_last_scan.min(); min = this->range_min_max_last_scan.min();
 		imax = range_i_min_max_last_scan.max(); max = this->range_min_max_last_scan.max();
 		il = range_i_last_scan.max();
