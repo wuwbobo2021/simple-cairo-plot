@@ -4,8 +4,7 @@
 #ifndef SIMPLE_CAIRO_PLOT_AXIS_RANGE_H
 #define SIMPLE_CAIRO_PLOT_AXIS_RANGE_H
 
-#include <cmath>
-#include <stdexcept>
+#include <cmath> //round()
 
 namespace SimpleCairoPlot
 {
@@ -42,12 +41,9 @@ public:
 	void set_int();
 };
 
-inline AxisRange::AxisRange(float min, float max):
-	val_min(min), val_max(max),
-	val_length(max - min)
+inline AxisRange::AxisRange(float min, float max)
 {
-	if (min > max)
-		throw std::invalid_argument("AxisRange::AxisRange(): min > max.");
+	this->set(min, max);
 }
 
 inline float AxisRange::min() const
@@ -128,10 +124,13 @@ inline float AxisRange::map_reverse(float val, AxisRange range) const
 
 inline void AxisRange::set(float min, float max)
 {
-	if (min > max)
-		throw std::invalid_argument("AxisRange::set(): min >= max.");
-	this->val_min = min; this->val_max = max;
-	this->val_length = max - min;
+	if (min <= max) {
+		this->val_min = min; this->val_max = max;
+	} else {
+		this->val_min = max; this->val_max = min;
+	}
+	
+	this->val_length = this->val_max - this->val_min;
 }
 
 inline void AxisRange::move(float offset)
@@ -161,8 +160,7 @@ inline void AxisRange::fit_by_range(AxisRange range)
 
 inline void AxisRange::scale(float factor, float cursor)
 {
-	if (factor <= 0)
-		throw std::invalid_argument("AxisRange::scale(): minus factor.");
+	if (factor < 0) factor = -factor;
 	
 	float l = cursor - this->val_min, r = this->val_max - cursor;
 	l *= factor; r *= factor;

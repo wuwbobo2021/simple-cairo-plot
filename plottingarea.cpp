@@ -285,8 +285,7 @@ Gtk::Allocation PlottingArea::draw_grid(const Cairo::RefPtr<Cairo::Context>& cr)
 		
 		if (this->option_show_axis_x_values) {
 			sst.unsetf(std::ios::fixed); this->sst.precision(6);
-			AxisRange range_val_x(this->range_x);
-			range_val_x.move(this->source->count_discarded());
+			AxisRange range_val_x = this->source->range_to_abs(this->range_x);
 			range_val_x.scale(this->axis_x_unit, 0);
 			
 			for (unsigned int i = 0; i <= this->axis_x_divider; i++) {

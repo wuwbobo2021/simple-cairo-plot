@@ -1,9 +1,9 @@
 // by wuwbobo2021 <https://github.com/wuwbobo2021>, <wuwbobo@outlook.com>
 // If you have found bugs in this program, please pull an issue, or contact me.
 
-#include <limits>
-#include <stdexcept>
 #include "circularbuffer.h"
+
+#include <limits>
 
 using namespace SimpleCairoPlot;
 
@@ -74,38 +74,13 @@ CircularBuffer::~CircularBuffer()
 	if (this->buf != NULL) delete[] this->buf;
 }
 
-AxisRange CircularBuffer::get_value_range(const AxisRange& range, unsigned int chk_step)
-{
-	if (this->cnt == 0) return AxisRange(0, 0);
-	if (chk_step == 0 || chk_step >= this->cnt / 2) chk_step = 1;
-	
-	this->mtx.lock();
-	unsigned int il = range.min(), ir = range.max();
-	if (il >= this->cnt) il = this->cnt - 1; //rare
-	if (ir >= this->cnt) ir = this->cnt - 1;
-	
-	using std::numeric_limits;
-	float cur, min = numeric_limits<float>::max(), max = numeric_limits<float>::min();
-	float* p = this->get_item_addr(il);
-	for (unsigned int i = il; i <= ir; i += chk_step) {
-		cur = *p;
-		if (cur < min) min = cur;
-		if (cur > max) max = cur;
-		p += chk_step; if (p > this->bufend) p -= this->bufsize;
-	}
-	
-	if (min > max)
-		throw std::runtime_error("CircularBuffer::get_value_range(): min > max.");
-	
-	this->mtx.unlock();
-	return AxisRange(min, max);
-}
-
 void CircularBuffer::clear(bool clear_count_history)
 {
 	this->cnt = 0;
 	if (clear_count_history) this->cnt_overall = 0;
 	this->end = this->buf;
+	
+	this->range_abs_i_last_scan.set(-1, -1);
 }
 
 void CircularBuffer::load(const float* data, unsigned int cnt)
@@ -123,5 +98,48 @@ void CircularBuffer::load(const float* data, unsigned int cnt)
 		this->push(*pt);
 	
 	this->mtx.unlock();
+}
+
+AxisRange CircularBuffer::get_value_range(AxisRange range, unsigned int chk_step)
+{
+	using std::numeric_limits;
+	
+	if (this->cnt == 0) return AxisRange(0, 0);
+	
+	AxisRange range_i_last_scan = this->range_to_rel(this->range_abs_i_last_scan);
+	if (range_i_last_scan.contain(range))
+		return this->range_min_max_last_scan;
+	
+	this->mtx.lock();
+	
+	range = this->range().cut_range(range);
+	unsigned int il = range.min(), ir = range.max();
+	
+	unsigned int imin = il, imax = il;
+	float cur, min = numeric_limits<float>::max(), max = numeric_limits<float>::lowest();
+	
+	AxisRange range_i_min_max_last_scan = this->range_to_rel(this->range_abs_i_min_max_last_scan);
+	if (range.contain(range_i_last_scan.max()) && range.contain(range_i_min_max_last_scan)) {
+		imin = range_i_min_max_last_scan.min(); min = this->range_min_max_last_scan.min();
+		imax = range_i_min_max_last_scan.max(); max = this->range_min_max_last_scan.max();
+		il = range_i_last_scan.max();
+	}
+	
+	if (chk_step == 0 || chk_step >= this->cnt / 2) chk_step = 1;
+	
+	float* p = this->get_item_addr(il);
+	for (unsigned int i = il; i <= ir; i += chk_step) {
+		cur = *p;
+		if (cur < min) {min = cur; imin = i;}
+		if (cur > max) {max = cur; imax = i;}
+		p += chk_step; if (p > this->bufend) p -= this->bufsize;
+	}
+	
+	this->range_abs_i_last_scan = this->range_to_abs(range);
+	this->range_abs_i_min_max_last_scan = this->range_to_abs(AxisRange(imin, imax));
+	this->range_min_max_last_scan = AxisRange(min, max);
+	
+	this->mtx.unlock();
+	return this->range_min_max_last_scan;
 }
 
