@@ -106,8 +106,10 @@ AxisRange CircularBuffer::get_value_range(AxisRange range, unsigned int chk_step
 	
 	if (this->cnt == 0) return AxisRange(0, 0);
 	
-	AxisRange range_i_last_scan = this->range_to_rel(this->range_abs_i_last_scan);
-	if (range_i_last_scan.contain(range))
+	AxisRange range_i_last_scan = this->range_to_rel(this->range_abs_i_last_scan),
+	          range_i_min_max_last_scan = this->range_to_rel(this->range_abs_i_min_max_last_scan);
+	
+	if (range_i_last_scan.contain(range) && range.contain(range_i_min_max_last_scan))
 		return this->range_min_max_last_scan;
 	
 	this->mtx.lock();
@@ -118,7 +120,6 @@ AxisRange CircularBuffer::get_value_range(AxisRange range, unsigned int chk_step
 	unsigned int imin = il, imax = il;
 	float cur, min = numeric_limits<float>::max(), max = numeric_limits<float>::lowest();
 	
-	AxisRange range_i_min_max_last_scan = this->range_to_rel(this->range_abs_i_min_max_last_scan);
 	if (range_i_last_scan.contain(range.min()) && range.contain(range_i_last_scan.max())
 	&&  range.contain(range_i_min_max_last_scan))
 	{
