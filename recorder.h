@@ -5,6 +5,7 @@
 #define SIMPLE_CAIRO_PLOT_RECORDER_H
 
 #include <vector>
+#include <chrono>
 #include <thread>
 
 #include <gtkmm/box.h>
@@ -94,6 +95,8 @@ inline float VariableAccessPtr::read() const
 		return *(this->addr_data);
 }
 
+const std::string Empty_Comment = "";
+
 class Recorder: public Gtk::Box
 {
 	unsigned int var_cnt = 0;
@@ -103,7 +106,7 @@ class Recorder: public Gtk::Box
 	PlottingArea* areas = NULL; Gtk::EventBox* eventboxes = NULL;
 	
 	Gtk::Scrollbar scrollbar; Gtk::Label space_left_of_scroll; Gtk::Box scrollbox;
-	Gtk::Box box_var_names; Gtk::Label label_axis_y_unit;
+	Gtk::Box box_var_names; Gtk::Label label_axis_x_unit;
 	Glib::Dispatcher dispatcher_range_update;
 	bool flag_goto_end = true, flag_on_zoom = false;
 	
@@ -112,6 +115,7 @@ class Recorder: public Gtk::Box
 	bool flag_recording = false;
 	bool option_record_until_full = false;
 	float interval = 10; unsigned int redraw_interval = 20; //in milliseconds
+	std::chrono::system_clock::time_point t_start;
 	
 	bool flag_not_full = true;
 	sigc::signal<void()> sig_full;
@@ -130,12 +134,18 @@ public:
 	virtual ~Recorder();
 	
 	bool is_recording() const;
+	float data_interval() const;
 	unsigned int var_count() const;
+	unsigned int data_count() const;
+	std::chrono::system_clock::time_point time_start() const;
+	std::chrono::system_clock::time_point time_first_data() const;
+	std::chrono::system_clock::time_point time_last_data() const;
+	
 	bool start(); //start recording
 	void stop();
 	CircularBuffer& buffer(unsigned int index) const; //direct access to each data buffer
-	bool open_csv(std::string& file_path);
-	bool save_csv(std::string& file_path);
+	bool open_csv(const std::string& file_path); //note: comments will not be loaded
+	bool save_csv(const std::string& file_path, const std::string& str_comment = Empty_Comment); //note: comment is unstandard
 	void clear();
 	
 	sigc::signal<void()> signal_full();
@@ -145,7 +155,7 @@ public:
 	
 	bool set_index_range(unsigned int range_width = 0); //range_width + 1 is the amount of data shows in each area
 	bool set_index_unit(float unit); //it should be the data interval, index values are multiplied by the unit
-	bool set_axis_y_range_length_min(unsigned int index, float length_min); //minimum range length of y-axis range in auto-set mode
+	bool set_y_range_length_min(unsigned int index, float length_min); //minimum range length of y-axis range in auto-set mode
 	bool set_y_range(unsigned int index, AxisRange range); //useless when option_auto_set_range_y is set
 	bool set_axis_divider(unsigned int x_div, unsigned int y_div); //how many segments the axis should be divided into
 	
@@ -162,9 +172,38 @@ inline bool Recorder::is_recording() const
 	return this->flag_recording;
 }
 
+inline float Recorder::data_interval() const
+{
+	return this->interval;
+}
+
 inline unsigned int Recorder::var_count() const
 {
 	return this->var_cnt;
+}
+
+inline unsigned int Recorder::data_count() const
+{
+	return this->bufs[0].count();
+}
+
+inline std::chrono::system_clock::time_point Recorder::time_start() const
+{
+	return this->t_start;
+}
+
+inline std::chrono::system_clock::time_point Recorder::time_first_data() const
+{
+	return this->t_start + std::chrono::microseconds(
+		(long int)(this->bufs[0].count_overwriten() * 1000.0 * this->interval)
+	);
+}
+
+inline std::chrono::system_clock::time_point Recorder::time_last_data() const
+{
+	return this->t_start + std::chrono::microseconds(
+		(long int)((this->bufs[0].count_overwriten() + this->data_count() - 1) * 1000.0 * this->interval)
+	);
 }
 
 inline CircularBuffer& Recorder::buffer(unsigned int index) const

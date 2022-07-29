@@ -3,17 +3,19 @@
 
 #include "recorder.h"
 
+#include <cstdlib> //strtof(): convert from string to float, faster than stringstream on Windows
 #include <cmath> //fabs()
-#include <chrono>
-#include <iostream>
+#include <ctime> //localtime()
+#include <iomanip> //put_time()
 #include <fstream>
 #include <sstream>
-
 #include <glibmm/timer.h>
 #include <gtkmm/adjustment.h>
 
 using namespace std::chrono;
 using namespace SimpleCairoPlot;
+
+const unsigned int Line_Length_Max = 4096;
 
 Recorder::Recorder():
 	Box(Gtk::ORIENTATION_VERTICAL, 10),
@@ -48,7 +50,7 @@ void Recorder::init(std::vector<VariableAccessPtr>& ptrs, unsigned int buf_size)
 	
 	Gtk::Label* label_var_bar_ind = Gtk::manage(new Gtk::Label("Variables:"));
 	this->box_var_names.pack_start(*label_var_bar_ind, Gtk::PACK_SHRINK);
-	this->box_var_names.pack_end(label_axis_y_unit, Gtk::PACK_SHRINK);
+	this->box_var_names.pack_end(label_axis_x_unit, Gtk::PACK_SHRINK);
 	
 	for (unsigned int i = 0; i < this->var_cnt; i++) {
 		this->ptrs[i] = ptrs[i];
@@ -126,6 +128,7 @@ bool Recorder::start()
 		return false;
 	}
 	
+	this->t_start = system_clock::now();
 	return true;
 }
 
@@ -142,62 +145,85 @@ void Recorder::stop()
 	}
 }
 
-bool Recorder::open_csv(std::string& file_path)
-{	
+bool Recorder::open_csv(const std::string& file_path)
+{
 	std::ifstream ifs(file_path, std::ios_base::in);
 	if (! ifs.is_open()) return false;
 
 	if (this->flag_recording) this->stop();
 	
-	const unsigned int Line_Length_Max = 4096;
 	char str[Line_Length_Max] = "\0";
-	
 	unsigned int var_cnt_csv = 1;
-	std::istringstream ist; bool head = true, suc = true; float cur_val;
+	bool flag_head = true, suc = true;
+	char* cur_str_num; char* aft; float cur_val;
+	
 	while (ifs && !ifs.eof()) {
-		ifs.getline(str, Line_Length_Max);
-		if (str[0] == '\0' || str[0] == '\r' || str[0] == '\n') continue; //empty line
+		ifs.getline(str, Line_Length_Max); //'\n' is not stored into str 
 		
-		for (unsigned int i = 0; i < Line_Length_Max; i++) {
-			if (str[i] == ',') {
-				str[i] = ' ';
-				if (head) var_cnt_csv++;
-			} else
-				if (str[i] == '\0') break;
-		}
-		if (head) {
+		// skip comment line or empty line
+		if (str[0] == '#' || str[0] == '/' || str[0] == '\r' || str[0] == '\0') continue;
+		
+		if (flag_head) { //header of the csv file
 			this->clear(); //put here to avoid clearing when opening an empty file
+			
+			for (unsigned int i = 0; i < Line_Length_Max; i++) {
+				if (str[i] == '\0') break;
+				if (str[i] == ',') var_cnt_csv++;
+			}
 			if (var_cnt_csv > this->var_cnt) var_cnt_csv = this->var_cnt;
 		}
 		
-		ist.str(str);
+		cur_str_num = str;
 		for (unsigned int i = 0; i < var_cnt_csv; i++) {
-			ist >> cur_val;
-			if (head && i == 0 && !ist) break; //header consists of names, not numeric values
+			if (cur_str_num[0] == '\0') suc = false; //not enough values in this line
+			cur_val = std::strtof(cur_str_num, &aft); //aft now points to the first character after the number string
+			if (cur_val == 0 && *aft != ',' && *aft != '\r' && *aft != '\0') {
+				if (! flag_head) suc = false; //non-numeric character in the middle
+				if (i == 0) break;
+			}
 			this->bufs[i].push(cur_val);
-		}
-		if (!ist) {
-			ist.clear(); if (! head) suc = false;
+			cur_str_num = aft; if (*aft != '\0') cur_str_num++;
 		}
 		
-		if (head) head = false;
+		if (flag_head) flag_head = false;
 	}
-	ifs.close();
 	
-	if (head) return false; //empty file, head not parsed
+	ifs.close();
+	if (flag_head) return false; //empty file, header is not parsed
 	
 	this->scroll_range_update();
 	this->refresh_areas(true, true);
 	return suc;
 }
 
-bool Recorder::save_csv(std::string& file_path)
+inline std::ostream& operator<<(std::ostream& ost, const system_clock::time_point& t)
+{
+	const std::time_t t_c = system_clock::to_time_t(t);
+	return ost << std::put_time(std::localtime(&t_c), "%Y-%m-%d %H:%M:%S");
+}
+
+bool Recorder::save_csv(const std::string& file_path, const std::string& str_comment)
 {
 	if (! this->var_cnt) return false;
 	if (this->flag_recording) this->stop();
 	
-	std::ofstream ofs(file_path, std::ios_base::out);
+	std::ofstream ofs(file_path, std::ios::out);
 	if (! ofs.is_open()) return false;
+	
+	if (str_comment.length() > 0) {
+		ofs << "# First Data: " << this->time_first_data()   << "\r\n"
+		    << "#  Last Data: " << this->time_last_data()    << "\r\n"
+		    << "#   Interval: " << this->data_interval() << " ms" << "\r\n\r\n";
+		
+		std::istringstream ist; ist.str(str_comment);
+		char str_line[Line_Length_Max] = "\0";
+		while (ist && !ist.eof()) {
+			ist.getline(str_line, Line_Length_Max);
+			if (str_line[0] == '\r' || str_line[0] == '\0') break;
+			ofs << "# " << str_line << "\r\n";
+		}
+		ofs << "\r\n";
+	}
 	
 	for (unsigned int i = 0; i < this->var_cnt; i++) {
 		ofs << this->ptrs[i].name_csv;
@@ -205,7 +231,7 @@ bool Recorder::save_csv(std::string& file_path)
 	}
 	ofs << "\r\n";
 	
-	for (unsigned int i = 0; i < this->bufs[0].count(); i++) {
+	for (unsigned int i = 0; i < this->data_count(); i++) {
 		for (unsigned int j = 0; j < this->var_cnt; j++) {
 			ofs << this->bufs[j][i];
 			if (j + 1 < this->var_cnt) ofs << ',';
@@ -230,7 +256,9 @@ sigc::signal<void()> Recorder::signal_full()
 
 bool Recorder::set_interval(float new_interval)
 {
+	if (this->flag_recording) return false;
 	if (new_interval <= 0) return false;
+	
 	this->interval = new_interval;
 	this->set_index_unit(new_interval / 1000.0);
 	this->set_redraw_interval(new_interval);
@@ -294,12 +322,12 @@ bool Recorder::set_index_unit(float unit)
 		axis_x_unit_name = sst.str() + " s";
 	}
 	this->areas[this->var_cnt - 1].axis_x_unit_name = axis_x_unit_name;
-	label_axis_y_unit.set_label("Unit-Y: " + axis_x_unit_name);
+	this->label_axis_x_unit.set_label("Unit-X: " + axis_x_unit_name);
 	
 	return true;
 }
 
-bool Recorder::set_axis_y_range_length_min(unsigned int index, float length_min)
+bool Recorder::set_y_range_length_min(unsigned int index, float length_min)
 {
 	if (index > this->var_cnt - 1) return false;
 	return this->areas[index].set_axis_y_range_length_min(length_min);
@@ -421,10 +449,10 @@ void Recorder::scroll_range_update()
 {
 	Glib::RefPtr<Gtk::Adjustment> adj = this->scrollbar.get_adjustment();
 	unsigned int pre_adj_right = adj->get_value() + adj->get_page_size(),
-				 new_upper = this->bufs[0].count() - 1;
+				 new_upper = this->data_count() - 1;
 	
 	this->flag_goto_end = (pre_adj_right >= adj->get_upper() || pre_adj_right >= new_upper);
-	adj->set_upper(this->bufs[0].count() - 1);
+	adj->set_upper(this->data_count() - 1);
 	if (this->flag_goto_end)
 		adj->set_value(adj->get_upper() - adj->get_page_size());
 }
@@ -447,7 +475,7 @@ void Recorder::on_scroll()
 
 bool Recorder::on_button_press(GdkEventButton *event)
 {
-	if (this->bufs[0].count() == 0) return true;
+	if (this->data_count() == 0) return true;
 	if (event->type != GDK_BUTTON_PRESS) return true;
 	if (event->button != 1 && event->button != 3) return true;
 	
@@ -470,7 +498,7 @@ bool Recorder::on_button_press(GdkEventButton *event)
 	
 	this->flag_on_zoom = true;
 	Glib::RefPtr<Gtk::Adjustment> adj = this->scrollbar.get_adjustment();
-	adj->configure(range_x_new.min(), 0, this->bufs[0].count() - 1, 1, 200, range_x_new.length());
+	adj->configure(range_x_new.min(), 0, this->data_count() - 1, 1, 200, range_x_new.length());
 	this->on_scroll(); //strange: Gtk::Adjustment::configure() doesn't emit signal_value_changed
 	this->flag_on_zoom = false;
 	return true;
