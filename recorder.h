@@ -95,7 +95,7 @@ inline float VariableAccessPtr::read() const
 		return *(this->addr_data);
 }
 
-const std::string Empty_Comment = "";
+extern const std::string Empty_Comment;
 
 class Recorder: public Gtk::Box
 {

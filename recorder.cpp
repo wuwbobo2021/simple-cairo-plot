@@ -15,7 +15,10 @@
 using namespace std::chrono;
 using namespace SimpleCairoPlot;
 
-const unsigned int Line_Length_Max = 4096;
+namespace SimpleCairoPlot {
+	const std::string Empty_Comment = "";
+	const unsigned int Line_Length_Max = 4096;
+}
 
 Recorder::Recorder():
 	Box(Gtk::ORIENTATION_VERTICAL, 10),
@@ -205,6 +208,7 @@ inline std::ostream& operator<<(std::ostream& ost, const system_clock::time_poin
 bool Recorder::save_csv(const std::string& file_path, const std::string& str_comment)
 {
 	if (! this->var_cnt) return false;
+	if (this->data_count() == 0) return false;
 	if (this->flag_recording) this->stop();
 	
 	std::ofstream ofs(file_path, std::ios::out);
