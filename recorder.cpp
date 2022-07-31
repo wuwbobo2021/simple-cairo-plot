@@ -223,7 +223,7 @@ bool Recorder::save_csv(const std::string& file_path, const std::string& str_com
 		char str_line[Line_Length_Max] = "\0";
 		while (ist && !ist.eof()) {
 			ist.getline(str_line, Line_Length_Max);
-			if (str_line[0] == '\r' || str_line[0] == '\0') break;
+			if ((str_line[0] == '\r' || str_line[0] == '\0') && ist.eof()) break;
 			ofs << "# " << str_line << "\r\n";
 		}
 		ofs << "\r\n";
