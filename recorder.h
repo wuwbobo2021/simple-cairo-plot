@@ -10,6 +10,7 @@
 
 #include <gtkmm/box.h>
 #include <gtkmm/eventbox.h>
+#include <gtkmm/adjustment.h>
 #include <gtkmm/scrollbar.h>
 #include <gtkmm/label.h>
 
@@ -33,7 +34,11 @@ class VariableAccessPtr
 	void* addr_obj = NULL;
 
 public:
-	std::string unit_name = "", name_csv = ""; Glib::ustring name_friendly = "";
+	std::string unit_name = "", name_csv = "";
+	Glib::ustring name_friendly = "";
+	
+	unsigned int precision_csv = 3; //decimal digits (in .csv file)
+	
 	Gdk::RGBA color_plot;
 	
 	VariableAccessPtr();
@@ -107,8 +112,7 @@ class Recorder: public Gtk::Box
 	
 	Gtk::Scrollbar scrollbar; Gtk::Label space_left_of_scroll; Gtk::Box scrollbox;
 	Gtk::Box box_var_names; Gtk::Label label_axis_x_unit;
-	Glib::Dispatcher dispatcher_range_update;
-	bool flag_goto_end = true, flag_on_zoom = false;
+	Glib::Dispatcher dispatcher_refresh_scroll; volatile bool flag_refresh_scroll = false;
 	
 	std::thread* thread_record = NULL,
 	           * thread_refresh = NULL;
@@ -117,7 +121,10 @@ class Recorder: public Gtk::Box
 	float interval = 10; unsigned int redraw_interval = 20; //in milliseconds
 	std::chrono::system_clock::time_point t_start;
 	
-	bool flag_not_full = true;
+	bool option_extend_index_range = false;
+	volatile bool flag_goto_end = false, flag_extend = false;
+	
+	volatile bool flag_not_full = true;
 	sigc::signal<void()> sig_full;
 	Glib::Dispatcher dispatcher_sig_full;
 	
@@ -125,7 +132,9 @@ class Recorder: public Gtk::Box
 	void refresh_loop();
 	void on_scroll();
 	bool on_button_press(GdkEventButton *event);
-	void scroll_range_update();
+	void refresh_scroll();
+	bool auto_set_scroll_mode();
+	bool auto_set_scroll_mode(Glib::RefPtr<Gtk::Adjustment> adj);
 	void refresh_areas(bool forced_check_range_y = false, bool forced_adapt = false);
 	
 public:
@@ -153,18 +162,21 @@ public:
 	bool set_interval(float new_interval); //interval of reading current values, in milliseconds
 	bool set_redraw_interval(unsigned int new_redraw_interval); //set manually if a slower redraw rate is required to reduce CPU usage
 	
-	bool set_index_range(unsigned int range_width = 0); //range_width + 1 is the amount of data shows in each area
+	bool set_index_range(AxisRange range); //range.width() + 1 is the amount of data shows in each area
+	bool set_index_range(unsigned int range_width = 0); //equal to AxisRange(0, range_width)
 	bool set_index_unit(float unit); //it should be the data interval, index values are multiplied by the unit
 	bool set_y_range_length_min(unsigned int index, float length_min); //minimum range length of y-axis range in auto-set mode
 	bool set_y_range(unsigned int index, AxisRange range); //useless when option_auto_set_range_y is set
 	bool set_axis_divider(unsigned int x_div, unsigned int y_div); //how many segments the axis should be divided into
 	
 	void set_option_record_until_full(bool set); //stop after the buffers become full, default: false
-	void set_option_auto_set_range_y(bool set); //if it's not set, the user must set the range for each area
-	void set_option_auto_set_zero_bottom(bool set); //if the bottom of range y should be zero in auto set mode
-	void set_option_show_axis_x_values(bool set); //only that of the bottommost is shown
-	void set_option_show_axis_y_values(bool set); //shown in left border of each area
-	void set_option_anti_alias(bool set); //default: false
+	void set_option_auto_extend_index_range(bool set); //extend index range to show all existing data. default: false
+	void set_option_auto_set_range_y(unsigned int index, bool set); //if not, the user must set the range for each area. default: true
+	void set_option_auto_set_zero_bottom(unsigned int index, bool set); //set the bottom of range y to zero in auto mode. default: true
+	void set_option_show_axis_x_values(bool set); //only that of the bottommost is shown. default: true
+	void set_option_axis_x_int_values(bool set); //don't show decimal digits for x-axis values. default: false
+	void set_option_show_axis_y_values(bool set); //shown in left border of each area. default: true
+	void set_option_anti_alias(bool set); //font of x-axis, y-axis values are not influenced. default: false
 };
 
 inline bool Recorder::is_recording() const
@@ -209,6 +221,23 @@ inline std::chrono::system_clock::time_point Recorder::time_last_data() const
 inline CircularBuffer& Recorder::buffer(unsigned int index) const
 {
 	return this->bufs[index];
+}
+
+inline bool Recorder::set_index_range(unsigned int range_width)
+{
+	return this->set_index_range(AxisRange(0, range_width));
+}
+
+// private
+inline bool Recorder::auto_set_scroll_mode()
+{
+	return this->auto_set_scroll_mode(this->scrollbar.get_adjustment());
+}
+
+inline void Recorder::refresh_areas(bool forced_check_range_y, bool forced_adapt)
+{
+	for (unsigned int i = 0; i < this->var_cnt; i++)
+		this->areas[i].refresh(forced_check_range_y, forced_adapt);
 }
 
 }

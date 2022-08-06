@@ -43,6 +43,7 @@ public:
 	
 	unsigned int count() const;
 	AxisRange range() const;
+	AxisRange range_max() const;
 	bool is_full() const;
 	unsigned long int count_overwriten() const;
 	AxisRange range_to_abs(AxisRange range) const;
@@ -92,7 +93,15 @@ inline unsigned int CircularBuffer::count() const
 
 inline AxisRange CircularBuffer::range() const
 {
-	return AxisRange(0, this->cnt - 1);
+	if (this->cnt > 0)
+		return AxisRange(0, this->cnt - 1);
+	else
+		return AxisRange(0, 0);
+}
+
+inline AxisRange CircularBuffer::range_max() const
+{
+	return AxisRange(0, this->bufsize - 1);
 }
 
 inline bool CircularBuffer::is_full() const

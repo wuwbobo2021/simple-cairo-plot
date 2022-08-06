@@ -10,7 +10,7 @@
 #include <fstream>
 #include <sstream>
 #include <glibmm/timer.h>
-#include <gtkmm/adjustment.h>
+#include <gtkmm/separator.h>
 
 using namespace std::chrono;
 using namespace SimpleCairoPlot;
@@ -21,14 +21,14 @@ namespace SimpleCairoPlot {
 }
 
 Recorder::Recorder():
-	Box(Gtk::ORIENTATION_VERTICAL, 10),
+	Box(Gtk::ORIENTATION_VERTICAL, 5),
 	scrollbox(Gtk::ORIENTATION_HORIZONTAL, PlottingArea::Border_X_Left - 2),
 	scrollbar(Gtk::Adjustment::create(0, 0, 200, 1, 200, 200), Gtk::ORIENTATION_HORIZONTAL),
 	box_var_names(Gtk::ORIENTATION_HORIZONTAL, 20)
 {}
 
 Recorder::Recorder(std::vector<VariableAccessPtr>& ptrs, unsigned int buf_size):
-	Box(Gtk::ORIENTATION_VERTICAL, 10),
+	Box(Gtk::ORIENTATION_VERTICAL, 5),
 	scrollbox(Gtk::ORIENTATION_HORIZONTAL, PlottingArea::Border_X_Left - 2),
 	scrollbar(Gtk::Adjustment::create(0, 0, 200, 1, 200, 200), Gtk::ORIENTATION_HORIZONTAL),
 	box_var_names(Gtk::ORIENTATION_HORIZONTAL, 20)
@@ -51,8 +51,6 @@ void Recorder::init(std::vector<VariableAccessPtr>& ptrs, unsigned int buf_size)
 	this->areas = new PlottingArea[var_cnt];
 	this->eventboxes = new Gtk::EventBox[var_cnt];
 	
-	Gtk::Label* label_var_bar_ind = Gtk::manage(new Gtk::Label("Variables:"));
-	this->box_var_names.pack_start(*label_var_bar_ind, Gtk::PACK_SHRINK);
 	this->box_var_names.pack_end(label_axis_x_unit, Gtk::PACK_SHRINK);
 	
 	for (unsigned int i = 0; i < this->var_cnt; i++) {
@@ -63,6 +61,14 @@ void Recorder::init(std::vector<VariableAccessPtr>& ptrs, unsigned int buf_size)
 		this->areas[i].color_plot = this->ptrs[i].color_plot;
 		this->eventboxes[i].add(this->areas[i]);
 		this->pack_start(this->eventboxes[i], Gtk::PACK_EXPAND_WIDGET);
+		
+		if (i < this->var_cnt - 1) {
+			Gtk::Separator* separator = Gtk::manage(new Gtk::Separator);
+			Gtk::Box* box_separator = Gtk::manage(new Gtk::Box(Gtk::ORIENTATION_HORIZONTAL));
+			box_separator->pack_start(*separator, Gtk::PACK_SHRINK);
+			separator->set_size_request(PlottingArea::Border_X_Left, 2);
+			this->pack_start(*box_separator, Gtk::PACK_SHRINK);
+		}	
 		
 		if (this->ptrs[i].name_csv == "") this->ptrs[i].name_csv = "var" + std::to_string(i + 1);
 		if (this->ptrs[i].name_friendly == "") this->ptrs[i].name_friendly = this->ptrs[i].name_csv;
@@ -75,7 +81,6 @@ void Recorder::init(std::vector<VariableAccessPtr>& ptrs, unsigned int buf_size)
 		this->box_var_names.pack_start(*label_name, Gtk::PACK_SHRINK);
 	}
 	
-	this->scrollbar.get_adjustment()->configure(0, 0, 200, 1, 200, 200); //uninitialized adjustment
 	this->scrollbar.signal_value_changed().connect(sigc::mem_fun(*this, &Recorder::on_scroll));
 	this->scrollbox.pack_start(this->space_left_of_scroll, Gtk::PACK_SHRINK);
 	this->scrollbox.pack_start(this->scrollbar, Gtk::PACK_EXPAND_WIDGET);
@@ -83,11 +88,12 @@ void Recorder::init(std::vector<VariableAccessPtr>& ptrs, unsigned int buf_size)
 	
 	this->pack_start(this->box_var_names, Gtk::PACK_SHRINK);
 	
-	this->dispatcher_range_update.connect(sigc::mem_fun(*this, &Recorder::scroll_range_update));
+	this->dispatcher_refresh_scroll.connect(sigc::mem_fun(*this, &Recorder::refresh_scroll));
 	this->dispatcher_sig_full.connect(sigc::mem_fun(this->sig_full, &sigc::signal<void()>::emit));
 	
 	this->set_interval(10);
-	this->set_index_range(200);
+	this->set_index_range(200 - 1);
+	this->auto_set_scroll_mode(); //actually turns off goto-end mode, because it's not recording
 	
 	for (unsigned int i = 0; i < this->var_cnt - 1; i++)
 		this->areas[i].option_show_axis_x_values = false;
@@ -131,7 +137,6 @@ bool Recorder::start()
 		return false;
 	}
 	
-	this->t_start = system_clock::now();
 	return true;
 }
 
@@ -194,8 +199,7 @@ bool Recorder::open_csv(const std::string& file_path)
 	ifs.close();
 	if (flag_head) return false; //empty file, header is not parsed
 	
-	this->scroll_range_update();
-	this->refresh_areas(true, true);
+	this->set_index_range(this->bufs[0].range());
 	return suc;
 }
 
@@ -217,7 +221,7 @@ bool Recorder::save_csv(const std::string& file_path, const std::string& str_com
 	if (str_comment.length() > 0) {
 		ofs << "# First Data: " << this->time_first_data()   << "\r\n"
 		    << "#  Last Data: " << this->time_last_data()    << "\r\n"
-		    << "#   Interval: " << this->data_interval() << " ms" << "\r\n\r\n";
+		    << "#   Interval: " << this->data_interval() << " ms" << "\r\n";
 		
 		std::istringstream ist; ist.str(str_comment);
 		char str_line[Line_Length_Max] = "\0";
@@ -226,7 +230,6 @@ bool Recorder::save_csv(const std::string& file_path, const std::string& str_com
 			if ((str_line[0] == '\r' || str_line[0] == '\0') && ist.eof()) break;
 			ofs << "# " << str_line << "\r\n";
 		}
-		ofs << "\r\n";
 	}
 	
 	for (unsigned int i = 0; i < this->var_cnt; i++) {
@@ -235,8 +238,10 @@ bool Recorder::save_csv(const std::string& file_path, const std::string& str_com
 	}
 	ofs << "\r\n";
 	
+	ofs.setf(std::ios::fixed);
 	for (unsigned int i = 0; i < this->data_count(); i++) {
 		for (unsigned int j = 0; j < this->var_cnt; j++) {
+			ofs.precision(this->ptrs[j].precision_csv);
 			ofs << this->bufs[j][i];
 			if (j + 1 < this->var_cnt) ofs << ',';
 		}
@@ -264,7 +269,7 @@ bool Recorder::set_interval(float new_interval)
 	if (new_interval <= 0) return false;
 	
 	this->interval = new_interval;
-	this->set_index_unit(new_interval / 1000.0);
+	this->set_index_unit(new_interval / 1000.0); //to seconds
 	this->set_redraw_interval(new_interval);
 	return true;
 }
@@ -278,23 +283,27 @@ bool Recorder::set_redraw_interval(unsigned new_redraw_interval)
 	return true;
 }
 
-bool Recorder::set_index_range(unsigned int range_width) //side effect: scroll to index 0
+bool Recorder::set_index_range(AxisRange range)
 {
 	if (! this->var_cnt) return false;
-	if (range_width > this->bufs[0].size()) return false;
+	if (range.length() > this->bufs[0].range_max().length()) return false;
 	
-	if (range_width == 0)
-		range_width = this->areas[0].get_range_x().length();
-	else if (range_width == this->bufs[0].size())
-		range_width--;
+	if (range.length() == 0)
+		range = this->areas[0].get_range_x();
+	else if (range.length() == this->bufs[0].size())
+		range.set(0, range.max() - 1);
+	else
+		range.fit_by_range(this->bufs[0].range_max());
 	
 	for (unsigned int i = 0; i < this->var_cnt; i++)
-		this->areas[i].set_range_x(AxisRange(0, range_width)); //option_auto_goto_end is enabled by default
+		this->areas[i].set_range_x(range);
 	
-	this->scrollbar.get_adjustment()->set_page_size(range_width);
-	if (!this->flag_recording || !this->flag_goto_end)
-		this->scrollbar.get_adjustment()->set_value(0);
+	if (this->flag_recording && this->flag_not_full)
+		this->auto_set_scroll_mode
+			(Gtk::Adjustment::create(range.min(), 0, this->bufs[0].range().max(), 1, 1, range.length()));
 	
+	this->refresh_areas(true, true);
+	this->dispatcher_refresh_scroll.emit();
 	return true;
 }
 
@@ -309,7 +318,7 @@ bool Recorder::set_index_unit(float unit)
 		this->areas[i].set_axis_x_unit(unit);
 	
 	float axis_x_unit = (this->interval / 1000.0) / unit;
-	std::string axis_x_unit_name;
+	std::string axis_x_unit_name; bool unique_unit = false;
 	
 	if (almost_equal(axis_x_unit, 0.001 * 0.001))
 		axis_x_unit_name = "us";
@@ -322,11 +331,15 @@ bool Recorder::set_index_unit(float unit)
 	else if (almost_equal(axis_x_unit, 3600.0))
 		axis_x_unit_name = "h";
 	else {
+		unique_unit = true;
 		std::ostringstream sst; sst.precision(6); sst << axis_x_unit;
 		axis_x_unit_name = sst.str() + " s";
 	}
-	this->areas[this->var_cnt - 1].axis_x_unit_name = axis_x_unit_name;
-	this->label_axis_x_unit.set_label("Unit-X: " + axis_x_unit_name);
+	
+	this->areas[this->var_cnt - 1].axis_x_unit_name = (unique_unit? "" : axis_x_unit_name);
+	this->label_axis_x_unit.set_visible(unique_unit);
+	if (unique_unit)
+		this->label_axis_x_unit.set_label("Unit-X: " + axis_x_unit_name);
 	
 	return true;
 }
@@ -356,22 +369,35 @@ void Recorder::set_option_record_until_full(bool set)
 	this->option_record_until_full = set;
 }
 
-void Recorder::set_option_auto_set_range_y(bool set)
+void Recorder::set_option_auto_extend_index_range(bool set)
 {
-	for (unsigned int i = 0; i < this->var_cnt; i++)
-		this->areas[i].option_auto_set_range_y = set;
+	this->option_extend_index_range = set;
+	this->auto_set_scroll_mode();
 }
 
-void Recorder::set_option_auto_set_zero_bottom(bool set)
+void Recorder::set_option_auto_set_range_y(unsigned int index, bool set)
 {
-	for (unsigned int i = 0; i < this->var_cnt; i++)
-		this->areas[i].option_auto_set_zero_bottom = set;
+	if (index > this->var_cnt - 1) return;
+	this->areas[index].option_auto_set_range_y = set;
+		
+}
+
+void Recorder::set_option_auto_set_zero_bottom(unsigned int index, bool set)
+{
+	if (index > this->var_cnt - 1) return;
+	this->areas[index].option_auto_set_zero_bottom = set;
 }
 
 void Recorder::set_option_show_axis_x_values(bool set)
 {
 	if (! this->var_cnt) return;
 	this->areas[this->var_cnt - 1].option_auto_set_range_y = set;
+}
+
+void Recorder::set_option_axis_x_int_values(bool set)
+{
+	if (! this->var_cnt) return;
+	this->areas[this->var_cnt - 1].option_axis_x_int_values = set;
 }
 
 void Recorder::set_option_show_axis_y_values(bool set)
@@ -390,6 +416,8 @@ void Recorder::set_option_anti_alias(bool set)
 
 void Recorder::record_loop()
 {
+	this->t_start = system_clock::now();
+	
 	long int check_time_interval; //us
 	steady_clock::time_point t = steady_clock::now();
 	
@@ -399,9 +427,9 @@ void Recorder::record_loop()
 			this->bufs[i].push(this->ptrs[i].read());
 		
 		if (this->flag_not_full) {
-			// update scroll range
 			if (this->bufs[0].is_full()) {
 				this->flag_not_full = false;
+				this->dispatcher_refresh_scroll.emit(); //for the last time
 				if (this->option_record_until_full) {
 					this->flag_recording = false;
 					this->thread_refresh->join(); delete this->thread_refresh;
@@ -433,43 +461,33 @@ void Recorder::refresh_loop()
 	if (this->redraw_interval > 200) check_time_interval = 200;
 	check_time_interval *= 1000; //us
 	
+	this->set_index_range();
 	steady_clock::time_point t_last_refresh = steady_clock::now();
 	
-	while (this->flag_recording) {
-		if (this->flag_not_full)
-			this->dispatcher_range_update.emit(); //calls scroll_range_update() in main thread
-		
+	while (this->flag_recording) {		
 		if (steady_clock::now() >= t_last_refresh + milliseconds(this->redraw_interval)) {
 			// refresh graph view
 			t_last_refresh = steady_clock::now();
 			this->refresh_areas();
 		}
 		
+		if (this->flag_not_full)
+			this->dispatcher_refresh_scroll.emit(); //calls refresh_scroll() in main thread
+		
 		Glib::usleep(check_time_interval);
 	}
+	
+	this->auto_set_scroll_mode(); //actually turns off goto-end mode
 }
 
-void Recorder::scroll_range_update()
+void Recorder::on_scroll() //on scrollbar.signal_value_changed()
 {
-	Glib::RefPtr<Gtk::Adjustment> adj = this->scrollbar.get_adjustment();
-	unsigned int pre_adj_right = adj->get_value() + adj->get_page_size(),
-				 new_upper = this->data_count() - 1;
+	if (this->flag_refresh_scroll) return;
 	
-	this->flag_goto_end = (pre_adj_right >= adj->get_upper() || pre_adj_right >= new_upper);
-	adj->set_upper(this->data_count() - 1);
-	if (this->flag_goto_end)
-		adj->set_value(adj->get_upper() - adj->get_page_size());
-}
-
-void Recorder::on_scroll()
-{	
-	Glib::RefPtr<Gtk::Adjustment> adj = this->scrollbar.get_adjustment();
-	unsigned int val = adj->get_value();
-	this->flag_goto_end = (val >= adj->get_upper() - adj->get_page_size());
-	
-	for (unsigned int i = 0; i < this->var_cnt; i++) {
-		this->areas[i].option_auto_goto_end = this->flag_goto_end;
-		if (this->flag_goto_end == false || this->flag_on_zoom)
+	if (! this->auto_set_scroll_mode()) {
+		Glib::RefPtr<Gtk::Adjustment> adj = this->scrollbar.get_adjustment();
+		unsigned int val = adj->get_value();
+		for (unsigned int i = 0; i < this->var_cnt; i++)
 			this->areas[i].set_range_x(AxisRange(val, val + adj->get_page_size()));
 	}
 	
@@ -484,33 +502,68 @@ bool Recorder::on_button_press(GdkEventButton *event)
 	if (event->button != 1 && event->button != 3) return true;
 	
 	bool zoom_in = (event->button == 1); //is left button?
+	if (!zoom_in && this->flag_extend) return true;
 	
 	Gtk::Allocation alloc = this->areas[0].get_allocation();
-	AxisRange range_x = this->areas[0].get_range_x(), range_x_new = range_x,
+	AxisRange range_x = this->areas[0].get_range_x(),
 	          range_scr_x = AxisRange(PlottingArea::Border_X_Left, alloc.get_width());
 	
 	unsigned int x = range_scr_x.map(event->x, range_x);
 	
 	if (zoom_in) {
-		range_x_new.scale(0.5, x);
-		range_x_new.set_int();
-		if (range_x_new.length() < 2) return true;
+		range_x.scale(0.5, x); range_x.set_int();
+		if (range_x.length() < 2) return true;
 	} else
-		range_x_new.scale(2, x);
+		range_x.scale(2, x);
 	
-	range_x_new.fit_by_range(this->bufs[0].range());
+	if (range_x.length() <= this->bufs[0].range().max())
+		range_x.fit_by_range(this->bufs[0].range());
+	else
+		range_x.fit_by_range(this->bufs[0].range_max());
 	
-	this->flag_on_zoom = true;
-	Glib::RefPtr<Gtk::Adjustment> adj = this->scrollbar.get_adjustment();
-	adj->configure(range_x_new.min(), 0, this->data_count() - 1, 1, 200, range_x_new.length());
-	this->on_scroll(); //strange: Gtk::Adjustment::configure() doesn't emit signal_value_changed
-	this->flag_on_zoom = false;
+	if (zoom_in && range_x.max() > this->bufs[0].range().max())
+		range_x.min_move_to(0);
+	
+	this->set_index_range(range_x);
 	return true;
 }
 
-void Recorder::refresh_areas(bool forced_check_range_y, bool forced_adapt)
+void Recorder::refresh_scroll() //not thread-safe
 {
+	Glib::RefPtr<Gtk::Adjustment> adj = this->scrollbar.get_adjustment();
+	AxisRange range_x = this->areas[0].get_range_x();
+	unsigned int val, upper = this->bufs[0].range().max();
+	
+	if (this->flag_goto_end && !flag_extend && range_x.max() < upper)
+		val = upper - range_x.length(); //false update, not limited by redraw_interval
+	else
+		val = range_x.min();
+	
+	this->flag_refresh_scroll = true;
+	adj->configure(val, 0, upper, 1, range_x.length() / 2, range_x.length()); //doesn't emit signal_value_changed
+	this->flag_refresh_scroll = false;
+	this->scrollbar.set_visible(val > 0 || adj->get_page_size() < adj->get_upper());
+}
+
+bool Recorder::auto_set_scroll_mode(Glib::RefPtr<Gtk::Adjustment> adj) //default param is that of the scrollbar
+{
+	if (!this->flag_recording || !this->flag_not_full)
+		this->flag_goto_end = false;
+	else
+		this->flag_goto_end = (adj->get_value() + adj->get_page_size() >= adj->get_upper());
+	
 	for (unsigned int i = 0; i < this->var_cnt; i++)
-		this->areas[i].refresh(forced_check_range_y, forced_adapt);
+		this->areas[i].option_auto_goto_end = this->flag_goto_end;
+	
+	if (this->flag_goto_end) {
+		bool wide_enough = (adj->get_page_size() >= adj->get_upper());
+		
+		this->flag_extend = this->option_extend_index_range && wide_enough;
+		for (unsigned int i = 0; i < this->var_cnt; i++)
+			this->areas[i].option_auto_extend_range_x = this->flag_extend;
+	} else
+		this->flag_extend = false;
+	
+	return this->flag_goto_end;
 }
 

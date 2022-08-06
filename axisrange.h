@@ -21,9 +21,11 @@ public:
 	float min() const;
 	float max() const;
 	float length() const;
+	bool operator==(const AxisRange& range) const;
+	bool operator!=(const AxisRange& range) const;
 	bool contain(float val) const;
 	bool contain(AxisRange range) const;
-	float cut_value(float val) const;
+	float fit_value(float val) const;
 	AxisRange cut_range(AxisRange range) const;
 	AxisRange fit_range(AxisRange range) const;
 	float map(float val, float target_width, bool reverse = false) const;
@@ -61,6 +63,16 @@ inline float AxisRange::length() const
 	return this->val_length;
 }
 
+inline bool AxisRange::operator==(const AxisRange& range) const
+{
+	return this->val_min == range.min() && this->val_max == range.max();
+}
+
+inline bool AxisRange::operator!=(const AxisRange& range) const
+{
+	return this->val_min != range.min() || this->val_max != range.max();
+}
+
 inline bool AxisRange::contain(float val) const
 {
 	return this->val_min <= val && val <= this->val_max;
@@ -71,7 +83,7 @@ inline bool AxisRange::contain(AxisRange range) const
 	return this->val_min <= range.min() && range.max() <= this->val_max;
 }
 
-inline float AxisRange::cut_value(float val) const
+inline float AxisRange::fit_value(float val) const
 {
 	if (val < this->val_min) return this->val_min;
 	if (val > this->val_max) return this->val_max;
@@ -80,7 +92,7 @@ inline float AxisRange::cut_value(float val) const
 
 inline AxisRange AxisRange::cut_range(AxisRange range) const
 {
-	return AxisRange(this->cut_value(range.min()), this->cut_value(range.max()));
+	return AxisRange(this->fit_value(range.min()), this->fit_value(range.max()));
 }
 
 inline AxisRange AxisRange::fit_range(AxisRange range) const
@@ -101,7 +113,7 @@ inline float AxisRange::map(float val, float target_width, bool reverse) const
 {
 	if (this->val_length == 0) return 0;
 	
-	val = cut_value(val); //ensures that val is valid
+	val = fit_value(val); //ensures that val is valid
 	val = (target_width * (val - this->val_min)) / this->val_length;
 	if (reverse) val = target_width - val;
 	return val;

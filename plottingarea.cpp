@@ -24,6 +24,7 @@ void PlottingArea::init(CircularBuffer* buf)
 	this->dispatcher.connect(sigc::mem_fun(*(Gtk::Widget*)this, &Gtk::Widget::queue_draw));
 	
 	this->color_plot.set_rgba(1.0, 0.0, 0.0); //red
+	this->oss.setf(std::ios::fixed);
 }
 
 PlottingArea::~PlottingArea()
@@ -62,7 +63,12 @@ void PlottingArea::refresh(bool forced_check_range_y, bool forced_adapt)
 	if (! this->source)
 		throw std::runtime_error("PlottingArea::refresh(): pointer of source data buffer is not set.");
 	
-	if (this->option_auto_goto_end) this->range_x_goto_end();
+	if (this->option_auto_goto_end) {
+		if (this->option_auto_extend_range_x)
+			this->range_x_extend();
+		else
+			this->range_x_goto_end();
+	}
 	
 	if (forced_check_range_y) this->flag_check_range_y = true;
 	else if (this->option_auto_set_range_y)
@@ -133,6 +139,22 @@ void PlottingArea::range_x_goto_end()
 		this->range_x.min_move_to(0);
 }
 
+void PlottingArea::range_x_extend(bool remain_space)
+{
+	if (this->range_x.contain(this->source->range())) return;
+	
+	if (remain_space) {
+		this->range_x.min_move_to(0);
+		if (this->range_x.contain(this->source->range())) return;
+		this->range_x.scale(2, 0);
+		if (this->range_x.contain(this->source->range_max()))
+			this->range_x = this->source->range_max();
+		else
+			this->range_x.fit_by_range(this->source->range_max());
+	} else
+		this->range_x = this->source->range();
+}
+
 bool PlottingArea::set_range_y(AxisRange range)
 {
 	if (range.length() == 0) return false;
@@ -189,6 +211,17 @@ void PlottingArea::refresh_loop() //in the timer thread
 	}
 }
 
+void PlottingArea::on_style_updated()
+{
+	Gdk::RGBA color_fore = this->get_style_context()->get_color();
+	this->color_text = color_fore;
+	
+	if ((color_fore.get_red() + color_fore.get_green() + color_fore.get_blue()) / 3 > 0.5) //dark background
+		this->color_grid.set_rgba(0.4, 0.4, 0.4); //deep gray
+	else //light background
+		this->color_grid.set_rgba(0.8, 0.8, 0.8); //light gray
+}
+
 bool PlottingArea::on_draw(const Cairo::RefPtr<Cairo::Context>& cr)
 {
 	this->adjust_index_step();
@@ -204,35 +237,32 @@ bool PlottingArea::on_draw(const Cairo::RefPtr<Cairo::Context>& cr)
 
 void PlottingArea::adjust_index_step()
 {
-	unsigned int plot_data_amount_max = 4 * this->get_allocation().get_width();
-	if (plot_data_amount_max < 1024)
-		plot_data_amount_max = 1024;
+	unsigned int plot_data_amount_max = 2 * this->get_allocation().get_width();
+	if (plot_data_amount_max < 512)
+		plot_data_amount_max = 512;
 	
 	this->index_step = 1;
 	while (this->range_x.length() / this->index_step > plot_data_amount_max)
 		this->index_step++;
 }
 
-inline std::string float_to_str(float val, std::stringstream& sst)
+inline unsigned int get_precision(float len_seg)
 {
-	sst.str(""); sst << val;
-	return sst.str();
+	if (len_seg == 0) return 0;
+	float len = len_seg / 100.0; unsigned int i;
+	for (i = 0; len < 1; len *= 10.0, i++);
+	return i;
+}
+
+inline std::string float_to_str(float val, std::ostringstream& oss)
+{
+	oss.str(""); oss << val;
+	return oss.str();
 }
 
 inline void set_cr_color(const Cairo::RefPtr<Cairo::Context>& cr, const Gdk::RGBA& color)
 {
 	cr->set_source_rgb(color.get_red(), color.get_green(), color.get_blue());
-}
-
-void PlottingArea::on_style_updated()
-{
-	Gdk::RGBA color_fore = this->get_style_context()->get_color();
-	this->color_text = color_fore;
-	
-	if ((color_fore.get_red() + color_fore.get_green() + color_fore.get_blue()) / 3 > 0.5) //dark background
-		this->color_grid.set_rgba(0.4, 0.4, 0.4); //deep gray
-	else //light background
-		this->color_grid.set_rgba(0.8, 0.8, 0.8); //light gray
 }
 
 Gtk::Allocation PlottingArea::draw_grid(const Cairo::RefPtr<Cairo::Context>& cr)
@@ -280,38 +310,48 @@ Gtk::Allocation PlottingArea::draw_grid(const Cairo::RefPtr<Cairo::Context>& cr)
 	
 	// print value labels for axis x, y
 	if (this->option_show_axis_x_values || this->option_show_axis_y_values) {
-		sst.clear();
+		oss.clear();
+		cr->set_font_size(12);
 		set_cr_color(cr, this->color_text);
 		
 		if (this->option_show_axis_x_values) {
-			sst.unsetf(std::ios::fixed); this->sst.precision(6);
 			AxisRange range_val_x = this->source->range_to_abs(this->range_x);
 			range_val_x.scale(this->axis_x_unit, 0);
 			
+			if (this->option_axis_x_int_values)
+				oss.precision(0);
+			else
+				oss.precision(get_precision(range_val_x.length() / this->axis_x_divider));
+				
+			std::string str_x_val, str_x_val_prev = "";
 			for (unsigned int i = 0; i <= this->axis_x_divider; i++) {
 				gx_cur = range_grid_x.map(i, alloc_x);
 				float val = range_grid_x.map(i, range_val_x);
-				cr->move_to(gx_cur, inner_y2 + 10);
-				cr->show_text(float_to_str(val, this->sst));
+				str_x_val = float_to_str(val, this->oss);
+				if (!this->option_axis_x_int_values || str_x_val != str_x_val_prev) {
+					cr->move_to(gx_cur, inner_y2 + 10);
+					cr->show_text(float_to_str(val, this->oss));
+				}
+				if (this->option_axis_x_int_values) str_x_val_prev = str_x_val;
 			}
 			
 			if (this->axis_x_unit_name.length() > 0) {
-				cr->move_to(inner_x2 - (this->axis_x_unit_name.length() + 2) * 4.5, inner_y2 + 10);
+				cr->move_to(inner_x2 - (this->axis_x_unit_name.length() + 2) * 5, inner_y2 + 10);
 				cr->show_text('(' + this->axis_x_unit_name + ')');
 			}
 		}
 		
 		if (this->option_show_axis_y_values) {
-			sst.setf(std::ios::fixed); sst.precision(3);
+			oss.precision(get_precision(this->range_y.length() / this->axis_y_divider));
 			for (unsigned int i = 0; i <= this->axis_y_divider; i++) {
 				gy_cur = range_grid_y.map_reverse(i, alloc_y);
 				float val = range_grid_y.map(i, this->range_y);
 				cr->move_to(0, gy_cur);
 				if (i < this->axis_y_divider || this->axis_y_unit_name.length() == 0)
-					cr->show_text(float_to_str(val, this->sst));
+					cr->show_text(float_to_str(val, this->oss));
 				else {
 					gy_cur -= 2; cr->move_to(0, gy_cur);
-					cr->show_text(float_to_str(val, this->sst) + '(' + this->axis_y_unit_name + ')');
+					cr->show_text(float_to_str(val, this->oss) + '(' + this->axis_y_unit_name + ')');
 				}
 			}
 		}
@@ -349,4 +389,3 @@ void PlottingArea::plot(const Cairo::RefPtr<Cairo::Context>& cr, Gtk::Allocation
 	
 	cr->stroke();
 }
-
