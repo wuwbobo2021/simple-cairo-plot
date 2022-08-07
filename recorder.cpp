@@ -518,11 +518,11 @@ bool Recorder::on_button_press(GdkEventButton *event)
 	
 	if (range_x.length() <= this->bufs[0].range().max())
 		range_x.fit_by_range(this->bufs[0].range());
-	else
+	else {
 		range_x.fit_by_range(this->bufs[0].range_max());
-	
-	if (zoom_in && range_x.max() > this->bufs[0].range().max())
-		range_x.min_move_to(0);
+		if (zoom_in && range_x.max() > this->bufs[0].range().max())
+			range_x.min_move_to(0);
+	}
 	
 	this->set_index_range(range_x);
 	return true;
