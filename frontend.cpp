@@ -30,6 +30,7 @@ void Frontend::init(std::vector<VariableAccessPtr>& ptrs, unsigned int buf_size)
 	this->ptrs = ptrs; this->buf_size = buf_size;
 }
 
+#ifndef _WIN32
 void Frontend::open()
 {
 	if (this->thread_gtk || this->window) return;
@@ -39,6 +40,7 @@ void Frontend::open()
 		std::this_thread::sleep_for(std::chrono::milliseconds(10));
 	std::this_thread::sleep_for(std::chrono::milliseconds(10));
 }
+#endif
 
 Recorder& Frontend::recorder() const
 {
@@ -90,7 +92,7 @@ void Frontend::app_run()
 	
 	this->window = NULL; //the window is already destructed when the thread exits Application::run()
 	delete this->file_dialog; delete this->dispatcher_gtk;
-} // Unsolved problem on windows platform when running in a new thread: Segmentation fault received here.
+} // Unsolved problem on Windows when running in a new thread created by open(): Segmentation fault received here.
 
 void Frontend::create_window()
 {

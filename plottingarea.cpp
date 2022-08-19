@@ -4,7 +4,7 @@
 #include <chrono>
 
 #include "plottingarea.h"
-
+	#include <iostream>
 using namespace SimpleCairoPlot;
 
 PlottingArea::PlottingArea() {}
@@ -21,8 +21,17 @@ void PlottingArea::init(CircularBuffer* buf)
 	if (! buf)
 		throw std::invalid_argument("PlottingArea::init(): the buffer pointer is null.");
 	this->source = buf;
-	this->dispatcher.connect(sigc::mem_fun(*(Gtk::Widget*)this, &Gtk::Widget::queue_draw));
 	
+	bool except_caught = false;
+	try {
+		this->buf_spike = new unsigned int[this->source->spike_buffer_size()];
+	} catch (std::bad_alloc) {
+		except_caught = true;
+	}
+	if (except_caught || this->buf_spike == NULL)
+		throw std::bad_alloc();
+	
+	this->dispatcher.connect(sigc::mem_fun(*(Gtk::Widget*)this, &Gtk::Widget::queue_draw));
 	this->color_plot.set_rgba(1.0, 0.0, 0.0); //red
 	this->oss.setf(std::ios::fixed);
 }
@@ -84,16 +93,6 @@ void PlottingArea::refresh(bool forced_check_range_y, bool forced_adapt)
 	}
 	
 	this->dispatcher.emit(); //let the main thread enter this->queue_draw() and draw the frame
-}
-
-AxisRange PlottingArea::get_range_x() const
-{
-	return this->range_x;
-}
-
-AxisRange PlottingArea::get_range_y() const
-{
-	return this->range_y;
 }
 
 bool PlottingArea::set_axis_divider(unsigned int x_div, unsigned int y_div)
@@ -195,6 +194,8 @@ void PlottingArea::range_y_auto_set(bool adapt)
 		if (this->range_y.length() < this->axis_y_length_min)
 			this->range_y.scale(this->axis_y_length_min / this->range_y.length(), 0);
 	}
+	
+	this->source->set_spike_check_ref_min(range_tight.center());
 }
 
 /*------------------------------ private functions ------------------------------*/
@@ -238,8 +239,8 @@ bool PlottingArea::on_draw(const Cairo::RefPtr<Cairo::Context>& cr)
 void PlottingArea::adjust_index_step()
 {
 	unsigned int plot_data_amount_max = 2 * this->get_allocation().get_width();
-	if (plot_data_amount_max < 512)
-		plot_data_amount_max = 512;
+	if (plot_data_amount_max < Plot_Data_Amount_Limit_Min)
+		plot_data_amount_max = Plot_Data_Amount_Limit_Min;
 	
 	this->index_step = 1;
 	while (this->range_x.length() / this->index_step > plot_data_amount_max)
@@ -249,7 +250,7 @@ void PlottingArea::adjust_index_step()
 inline unsigned int get_precision(float len_seg)
 {
 	if (len_seg == 0) return 0;
-	float len = len_seg / 100.0; unsigned int i;
+	float len = len_seg / 10.0; unsigned int i;
 	for (i = 0; len < 1; len *= 10.0, i++);
 	return i;
 }
@@ -273,8 +274,16 @@ Gtk::Allocation PlottingArea::draw_grid(const Cairo::RefPtr<Cairo::Context>& cr)
 	      inner_x2 = alloc.get_width(),
 	      inner_y2 = alloc.get_height() - Border_Y;
 	
-	if (inner_x2 - inner_x1 < 10 || inner_y2 - inner_y1 < 10)
+	AxisRange alloc_x(inner_x1, inner_x2),
+			  alloc_y(inner_y1, inner_y2);
+	if (alloc_x.length() < 10 || alloc_y.length() < 10)
 		return Gtk::Allocation(0, 0, 0, 0);
+	
+	AxisRange range_val_x = this->source->range_to_abs(this->range_x);
+	range_val_x.scale(this->axis_x_unit, 0);
+	
+	AxisValues axis_x_values(range_val_x,   this->axis_x_divider, !this->option_fixed_scale),
+			   axis_y_values(this->range_y, this->axis_y_divider, !this->option_fixed_scale);
 	
 	set_cr_color(cr, this->color_grid);
 	
@@ -284,28 +293,19 @@ Gtk::Allocation PlottingArea::draw_grid(const Cairo::RefPtr<Cairo::Context>& cr)
 	              inner_x2 - inner_x1 - 2.0, inner_y2 - inner_y1 - 2.0);
 	cr->stroke();
 	
-	//draw grid
+	// draw grid
 	float gx_cur, gy_cur;
 	cr->set_line_width(1.0);
-	
-	// draw vertical lines for axis x
-	AxisRange range_grid_x(0, this->axis_x_divider),
-	          alloc_x(inner_x1, inner_x2);
-	for (unsigned int i = 1; i < this->axis_x_divider; i++) {
-		gx_cur = range_grid_x.map(i, alloc_x);
+	for (unsigned int i = 0; i < axis_x_values.count(); i++) {
+		gx_cur = range_val_x.map(axis_x_values[i], alloc_x);
 		cr->move_to(gx_cur, inner_y1);
 		cr->line_to(gx_cur, inner_y2);
 	}
-	
-	// draw horizontal lines for axis y
-	AxisRange range_grid_y(0, this->axis_y_divider),
-	          alloc_y(inner_y1, inner_y2);
-	for (unsigned int i = 1; i < this->axis_y_divider; i++) {
-		gy_cur = range_grid_y.map_reverse(i, alloc_y);
+	for (unsigned int i = 0; i < axis_y_values.count(); i++) {
+		gy_cur = this->range_y.map_reverse(axis_y_values[i], alloc_y);
 		cr->move_to(inner_x1, gy_cur);
 		cr->line_to(inner_x2, gy_cur);
 	}
-	
 	cr->stroke();
 	
 	// print value labels for axis x, y
@@ -315,18 +315,16 @@ Gtk::Allocation PlottingArea::draw_grid(const Cairo::RefPtr<Cairo::Context>& cr)
 		set_cr_color(cr, this->color_text);
 		
 		if (this->option_show_axis_x_values) {
-			AxisRange range_val_x = this->source->range_to_abs(this->range_x);
-			range_val_x.scale(this->axis_x_unit, 0);
-			
 			if (this->option_axis_x_int_values)
 				oss.precision(0);
 			else
 				oss.precision(get_precision(range_val_x.length() / this->axis_x_divider));
 				
-			std::string str_x_val, str_x_val_prev = "";
-			for (unsigned int i = 0; i <= this->axis_x_divider; i++) {
-				gx_cur = range_grid_x.map(i, alloc_x);
-				float val = range_grid_x.map(i, range_val_x);
+			float val; std::string str_x_val, str_x_val_prev = "";
+			for (unsigned int i = 0; i < axis_x_values.count(); i++) {
+				val = axis_x_values[i];
+				gx_cur = range_val_x.map(val, alloc_x);
+				if (inner_x2 - gx_cur < 50) break;
 				str_x_val = float_to_str(val, this->oss);
 				if (!this->option_axis_x_int_values || str_x_val != str_x_val_prev) {
 					cr->move_to(gx_cur, inner_y2 + 10);
@@ -335,6 +333,7 @@ Gtk::Allocation PlottingArea::draw_grid(const Cairo::RefPtr<Cairo::Context>& cr)
 				if (this->option_axis_x_int_values) str_x_val_prev = str_x_val;
 			}
 			
+			// show axis x unit name
 			if (this->axis_x_unit_name.length() > 0) {
 				cr->move_to(inner_x2 - (this->axis_x_unit_name.length() + 2) * 5, inner_y2 + 10);
 				cr->show_text('(' + this->axis_x_unit_name + ')');
@@ -343,13 +342,15 @@ Gtk::Allocation PlottingArea::draw_grid(const Cairo::RefPtr<Cairo::Context>& cr)
 		
 		if (this->option_show_axis_y_values) {
 			oss.precision(get_precision(this->range_y.length() / this->axis_y_divider));
-			for (unsigned int i = 0; i <= this->axis_y_divider; i++) {
-				gy_cur = range_grid_y.map_reverse(i, alloc_y);
-				float val = range_grid_y.map(i, this->range_y);
+			float val;
+			for (unsigned int i = 0; i < axis_y_values.count(); i++) {
+				val = axis_y_values[i];
+				gy_cur = this->range_y.map_reverse(val, alloc_y);
 				cr->move_to(0, gy_cur);
-				if (i < this->axis_y_divider || this->axis_y_unit_name.length() == 0)
+				if (i < axis_y_values.count() - 1 || this->axis_y_unit_name.length() == 0)
 					cr->show_text(float_to_str(val, this->oss));
 				else {
+					// print topmost value with axis y unit name
 					gy_cur -= 2; cr->move_to(0, gy_cur);
 					cr->show_text(float_to_str(val, this->oss) + '(' + this->axis_y_unit_name + ')');
 				}
@@ -385,6 +386,22 @@ void PlottingArea::plot(const Cairo::RefPtr<Cairo::Context>& cr, Gtk::Allocation
 	                  i += this->index_step) {
 		w_cur += w_unit;
 		cr->line_to(w_cur, this->range_y.map_reverse((*this->source)[i], alloc_y));
+	}
+	
+	// draw spikes seperately when index_step > 1
+	if (this->index_step > 1) {
+		AxisRange alloc_x(alloc.get_x(), alloc.get_x() + alloc.get_width());
+		w_unit = alloc.get_width() / this->range_x.length();
+		unsigned int cnt_sp = this->source->get_spikes(this->range_x, this->buf_spike);
+		
+		for (unsigned int i_sp = 0, i; i_sp < cnt_sp; i_sp++) {
+			i = this->buf_spike[i_sp];
+			if (i + 1 >= this->source->count()) break;
+			w_cur = this->range_x.map(i, alloc_x);
+			cr->move_to(w_cur, this->range_y.map_reverse((*this->source)[i], alloc_y));
+			w_cur += w_unit;
+			cr->line_to(w_cur, this->range_y.map_reverse((*this->source)[i + 1], alloc_y));
+		}
 	}
 	
 	cr->stroke();

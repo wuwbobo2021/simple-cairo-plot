@@ -47,7 +47,9 @@ public:
 	Frontend& operator=(const Frontend&) = delete;
 	virtual ~Frontend();
 	
+#ifndef _WIN32
 	void open(); //create a new thread to run the frontend
+#endif
 	Recorder& recorder() const; //notice: don't keep the returned reference when you need to close the frontend
 	void run(); //run in current thread or join the existing frontend thread, blocks
 	void close();

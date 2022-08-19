@@ -4,13 +4,12 @@
 #ifndef SIMPLE_CAIRO_PLOT_AXIS_RANGE_H
 #define SIMPLE_CAIRO_PLOT_AXIS_RANGE_H
 
-#include <cmath> //round()
+#include <cmath>
 
 namespace SimpleCairoPlot
 {
 
-// Closed range
-class AxisRange
+class AxisRange //closed range
 {
 	float val_min, val_max;
 	float val_length;
@@ -21,27 +20,37 @@ public:
 	float min() const;
 	float max() const;
 	float length() const;
+	float center() const;
+	
 	bool operator==(const AxisRange& range) const;
 	bool operator!=(const AxisRange& range) const;
+	
 	bool contain(float val) const;
 	bool contain(AxisRange range) const;
 	float fit_value(float val) const;
 	AxisRange cut_range(AxisRange range) const;
 	AxisRange fit_range(AxisRange range) const;
+	
 	float map(float val, float target_width, bool reverse = false) const;
 	float map(float val, AxisRange range, bool reverse = false) const;
 	float map_reverse(float val, float target_width) const;
 	float map_reverse(float val, AxisRange range) const;
 	
 	void set(float min, float max);
+	
 	void move(float offset);
 	void min_move_to(float min); //max moves with min
 	void max_move_to(float max); //min moves with max
+	
 	void fit_by_range(AxisRange range);
+	
 	void scale(float factor, float cursor);
 	void scale(float factor);
+	
 	void set_int();
 };
+
+using Range = AxisRange;
 
 inline AxisRange::AxisRange(float min, float max)
 {
@@ -61,6 +70,11 @@ inline float AxisRange::max() const
 inline float AxisRange::length() const
 {
 	return this->val_length;
+}
+
+inline float AxisRange::center() const
+{
+	return (this->val_min + this->val_max) / 2.0;
 }
 
 inline bool AxisRange::operator==(const AxisRange& range) const
@@ -181,13 +195,69 @@ inline void AxisRange::scale(float factor, float cursor)
 
 inline void AxisRange::scale(float factor)
 {
-	this->scale(factor, (this->val_min + this->val_max) / 2.0);
+	this->scale(factor, this->center());
 }
 
 inline void AxisRange::set_int()
 {
+	using namespace std;
 	this->val_min = round(this->val_min);
 	this->val_max = round(this->val_max);
+}
+
+class AxisValues
+{
+	enum {Cnt_Exp_Choices = 5};
+	const float Exp_Choices[Cnt_Exp_Choices] = {1, 2, 2.5, 5, 10};
+	
+	float val_first, cell_width;
+	unsigned int cnt;
+
+public:
+	AxisValues(AxisRange range, unsigned int divider, bool adjust = true);
+	unsigned int count() const;
+	float operator[](unsigned int i) const;
+};
+
+inline AxisValues::AxisValues(AxisRange range, unsigned int divider, bool adjust)
+{
+	using namespace std;
+	if (divider == 0) divider = 1;
+	
+	if (adjust && range.length() > 0) {
+		// inspired by: <https://blog.csdn.net/tiangej/article/details/47731501>
+		float cell_width_raw = range.length() / divider;
+		int exponent = floor(log(cell_width_raw) / log(10.0));
+		float power = pow(10, exponent), coefficient = cell_width_raw / power;
+		
+		unsigned int i;
+		for (i = 0; i < Cnt_Exp_Choices - 1; i++)
+			if (coefficient < Exp_Choices[i + 1]) {
+				float diff_left = coefficient - Exp_Choices[i],
+				      diff_right = Exp_Choices[i + 1] - coefficient;
+				if (diff_left > diff_right) i++;
+				break;
+			}
+		
+		this->cell_width = Exp_Choices[i] * power;
+		this->val_first = ceil(range.min() / this->cell_width) * this->cell_width;
+		this->cnt = (range.max() - this->val_first + this->cell_width / 200.0) / this->cell_width + 1;
+	}
+	else {
+		this->val_first = range.min();
+		this->cell_width = range.length() / divider;
+		this->cnt = divider + 1;
+	}
+}
+
+inline unsigned int AxisValues::count() const
+{
+	return this->cnt;
+}
+
+inline float AxisValues::operator[](unsigned int i) const
+{
+	return this->val_first + i*this->cell_width;
 }
 
 }

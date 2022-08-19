@@ -16,9 +16,13 @@
 
 namespace SimpleCairoPlot
 {
+
+const unsigned int Plot_Data_Amount_Limit_Min = 512;
+
 class PlottingArea: public Gtk::DrawingArea
 {
 	CircularBuffer* source = NULL; //data source
+	unsigned int* buf_spike = NULL;
 	
 	// range of indexes in the buffer and y-axis values that are covered by the area
 	AxisRange range_x = AxisRange(0, 100), range_y = AxisRange(0, 10);
@@ -61,7 +65,8 @@ public:
 	std::string axis_x_unit_name = "", axis_y_unit_name = ""; //both names should be short, especially axis_y_unit_name
 	
 	Gdk::RGBA color_plot; bool option_anti_alias = false;
-
+	bool option_fixed_scale = true;
+	
 	bool option_auto_set_range_y = true; //determine range_y automatically
 	bool option_auto_set_zero_bottom = true; //if the bottom of range y should be zero in auto-set mode
 	
@@ -90,6 +95,16 @@ public:
 	void range_x_extend(bool remain_space = true);
 	void range_y_auto_set(bool adapt = true);
 };
+
+inline AxisRange PlottingArea::get_range_x() const
+{
+	return this->range_x;
+}
+
+inline AxisRange PlottingArea::get_range_y() const
+{
+	return this->range_y;
+}
 
 }
 #endif
