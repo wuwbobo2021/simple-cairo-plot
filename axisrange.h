@@ -207,8 +207,8 @@ inline void AxisRange::set_int()
 
 class AxisValues
 {
-	enum {Cnt_Exp_Choices = 5};
-	const float Exp_Choices[Cnt_Exp_Choices] = {1, 2, 2.5, 5, 10};
+	enum {Cnt_Choices = 5};
+	const float Choices[Cnt_Choices] = {1, 2, 2.5, 5, 10};
 	
 	float val_first, cell_width;
 	unsigned int cnt;
@@ -231,15 +231,15 @@ inline AxisValues::AxisValues(AxisRange range, unsigned int divider, bool adjust
 		float power = pow(10, exponent), coefficient = cell_width_raw / power;
 		
 		unsigned int i;
-		for (i = 0; i < Cnt_Exp_Choices - 1; i++)
-			if (coefficient < Exp_Choices[i + 1]) {
-				float diff_left = coefficient - Exp_Choices[i],
-				      diff_right = Exp_Choices[i + 1] - coefficient;
+		for (i = 0; i < Cnt_Choices - 1; i++)
+			if (coefficient < Choices[i + 1]) {
+				float diff_left = coefficient - Choices[i],
+				      diff_right = Choices[i + 1] - coefficient;
 				if (diff_left > diff_right) i++;
 				break;
 			}
 		
-		this->cell_width = Exp_Choices[i] * power;
+		this->cell_width = Choices[i] * power;
 		this->val_first = ceil(range.min() / this->cell_width) * this->cell_width;
 		this->cnt = (range.max() - this->val_first + this->cell_width / 200.0) / this->cell_width + 1;
 	}

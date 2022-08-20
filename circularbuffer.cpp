@@ -120,6 +120,19 @@ void CircularBuffer::clear(bool clear_count_history)
 	this->range_abs_i_last_scan.set(-1, -1);
 }
 
+void CircularBuffer::erase()
+{
+	if (this->buf == NULL) return;
+	
+	this->mtx.lock();
+	
+	this->clear(true);
+	for (unsigned int i = 0; i < this->bufsize; i++)
+		this->buf[i] = 0;
+	
+	this->mtx.unlock();
+}
+
 void CircularBuffer::load(const float* data, unsigned int cnt, bool spike_check)
 {
 	if (cnt == 0) return;

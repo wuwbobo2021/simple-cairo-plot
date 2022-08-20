@@ -71,6 +71,7 @@ public:
 	Range range_to_rel(Range range_abs) const;
 	
 	void clear(bool clear_history_count = false);
+	void erase();
 	void push(float val, bool spike_check = true);
 	void load(const float* data, unsigned int cnt, bool spike_check = true);
 	
