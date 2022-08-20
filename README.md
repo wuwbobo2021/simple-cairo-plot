@@ -2,7 +2,7 @@
 An easy-to-use component for continuous recording and plotting of variables. it depends on `gtkmm-3.0`, and is implemented with Cairo.
 
 ## Demo
-Creating static library:
+To ceeate static library:
 ```
 git clone https://github.com/wuwbobo2021/simple-cairo-plot
 mv simple-cairo-plot/demo.cpp .
@@ -13,7 +13,7 @@ cd ..
 g++ demo.cpp -I./simple-cairo-plot -L./simple-cairo-plot -lsimple-cairo-plot `pkg-config gtkmm-3.0 --cflags --libs` -O3 -o test_program
 ./test_program
 ```
-Creating shared library:
+To create shared library:
 ```
 git clone https://github.com/wuwbobo2021/simple-cairo-plot
 mv simple-cairo-plot/demo.cpp .
