@@ -2,7 +2,7 @@
 #include <iostream>
 #include <chrono>
 
-#include "simple-cairo-plot/frontend.h"
+#include <simple-cairo-plot/frontend.h>
 
 using namespace std;
 using namespace std::chrono;

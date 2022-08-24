@@ -1,7 +1,7 @@
 // by wuwbobo2021 <https://github.com/wuwbobo2021>, <wuwbobo@outlook.com>
 // If you have found bugs in this program, please pull an issue, or contact me.
 
-#include "frontend.h"
+#include <simple-cairo-plot/frontend.h>
 
 #include <chrono>
 #include <iostream>

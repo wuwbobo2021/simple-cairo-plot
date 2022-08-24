@@ -1,7 +1,7 @@
 // by wuwbobo2021 <https://github.com/wuwbobo2021>, <wuwbobo@outlook.com>
 // If you have found bugs in this program, please pull an issue, or contact me.
 
-#include "recorder.h"
+#include <simple-cairo-plot/recorder.h>
 
 #include <cstdlib> //strtof(): convert from string to float, faster than stringstream on Windows
 #include <cmath> //fabs(), pow()
@@ -10,6 +10,7 @@
 #include <fstream>
 #include <sstream>
 #include <glibmm/timer.h>
+#include <gtkmm/cssprovider.h>
 #include <gtkmm/separator.h>
 
 using namespace std::chrono;
@@ -76,6 +77,9 @@ void Recorder::init(std::vector<VariableAccessPtr>& ptrs, unsigned int buf_size)
 	sigc::slot<bool, GdkEventMotion*> slot_motion = sigc::mem_fun(*this, &Recorder::on_motion_notify);
 	sigc::slot<bool, GdkEventCrossing*> slot_leave = sigc::mem_fun(*this, &Recorder::on_leave_notify);
 	
+	std::string str_css;
+	Glib::RefPtr<Gtk::CssProvider> css_provider = Gtk::CssProvider::create();
+	
 	for (unsigned int i = 0; i < this->var_cnt; i++) {
 		if (this->flag_spike_check)
 			this->bufs[i].set_spike_check_ref_min(100.0 * pow(0.1, this->ptrs[i].precision_csv));
@@ -103,7 +107,10 @@ void Recorder::init(std::vector<VariableAccessPtr>& ptrs, unsigned int buf_size)
 		if (this->ptrs[i].name_csv == "") this->ptrs[i].name_csv = "var" + std::to_string(i + 1);
 		if (this->ptrs[i].name_friendly == "") this->ptrs[i].name_friendly = this->ptrs[i].name_csv;
 		
-		this->var_labels[i].override_color(this->ptrs[i].color_plot); //TODO: avoid use of this deprecated function
+		this->var_labels[i].set_name("cairo_plot_label_var" + std::to_string(i + 1));
+		str_css += '#' + this->var_labels[i].get_name() + '\n' +
+		           "{\n\tcolor: " + this->ptrs[i].color_plot.to_string() + "\n}\n\n";
+		this->var_labels[i].get_style_context()->add_provider(css_provider, 0);
 		this->box_var_names.pack_start(this->var_labels[i], Gtk::PACK_SHRINK);
 	}
 	
@@ -112,13 +119,14 @@ void Recorder::init(std::vector<VariableAccessPtr>& ptrs, unsigned int buf_size)
 	this->scrollbox.pack_start(this->scrollbar, Gtk::PACK_EXPAND_WIDGET);
 	this->pack_start(this->scrollbox, Gtk::PACK_SHRINK);
 	
+	css_provider->load_from_data(str_css);
 	this->oss.setf(std::ios::fixed);
 	this->refresh_var_labels();
 	this->box_var_names.pack_start(this->label_cursor_x, Gtk::PACK_SHRINK);
 	this->box_var_names.pack_end(this->label_axis_x_unit, Gtk::PACK_SHRINK);
 	this->pack_start(this->box_var_names, Gtk::PACK_SHRINK);
 	
-	this->dispatcher_refresh_scroll.connect(sigc::mem_fun(*this, &Recorder::refresh_scroll));
+	this->dispatcher_refresh_indicators.connect(sigc::mem_fun(*this, &Recorder::refresh_indicators));
 	this->dispatcher_sig_full.connect(sigc::mem_fun(this->sig_full, &sigc::signal<void()>::emit));
 	
 	this->set_interval(10);
@@ -178,7 +186,7 @@ void Recorder::stop()
 
 void Recorder::clear()
 {
-	this->flag_not_full = true;
+	this->flag_full = false;
 	for (unsigned int i = 0; i < this->var_cnt; i++)
 		this->bufs[i].clear(true);
 }
@@ -354,6 +362,8 @@ bool Recorder::set_index_unit(float unit)
 bool Recorder::set_axis_x_range(AxisRange range)
 {
 	if (! this->var_cnt) return false;
+	
+	range.set_int();
 	if (range.length() > this->data_range_max().length()) return false;
 	
 	if (range.length() == 0)
@@ -366,12 +376,12 @@ bool Recorder::set_axis_x_range(AxisRange range)
 	for (unsigned int i = 0; i < this->var_cnt; i++)
 		this->areas[i].set_range_x(range);
 	
-	if (this->flag_recording && this->flag_not_full)
+	if (this->flag_recording && !this->flag_full)
 		this->auto_set_scroll_mode
 			(Gtk::Adjustment::create(range.min(), 0, this->data_range().max(), 1, 1, range.length()));
 	
 	this->refresh_areas(true, true);
-	this->dispatcher_refresh_scroll.emit();
+	this->dispatcher_refresh_indicators.emit();
 	return true;
 }
 
@@ -401,9 +411,9 @@ void Recorder::set_option_fixed_axis_scale(bool set)
 		this->areas[i].option_fixed_scale = set;
 }
 
-void Recorder::set_option_record_until_full(bool set)
+void Recorder::set_option_stop_on_full(bool set)
 {
-	this->option_record_until_full = set;
+	this->option_stop_on_full = set;
 }
 
 void Recorder::set_option_auto_extend_range_x(bool set)
@@ -464,10 +474,10 @@ void Recorder::record_loop()
 		for (unsigned int i = 0; i < this->var_cnt; i++)
 			this->bufs[i].push(this->ptrs[i].read(), this->flag_spike_check);
 		
-		if (this->flag_not_full && this->bufs[0].is_full()) {
-			this->flag_not_full = false;
-			this->dispatcher_refresh_scroll.emit(); //for the last time
-			if (this->option_record_until_full) {
+		if (!this->flag_full && this->bufs[0].is_full()) {
+			this->flag_full = true;
+			this->dispatcher_refresh_indicators.emit(); //for the last time
+			if (this->option_stop_on_full) {
 				this->flag_recording = false;
 				this->thread_refresh->join(); delete this->thread_refresh;
 				this->thread_record->detach(); delete this->thread_record;
@@ -507,8 +517,8 @@ void Recorder::refresh_loop()
 			this->refresh_areas();
 		}
 		
-		if (this->flag_not_full)
-			this->dispatcher_refresh_scroll.emit(); //calls refresh_scroll() in main thread
+		if (!this->flag_full || this->flag_cursor)
+			this->dispatcher_refresh_indicators.emit(); //calls refresh_indicators() in main thread
 		
 		Glib::usleep(check_time_interval);
 	}
@@ -516,8 +526,11 @@ void Recorder::refresh_loop()
 	this->auto_set_scroll_mode(); //actually turns off goto-end mode
 }
 
-void Recorder::refresh_scroll() //not thread-safe
+void Recorder::refresh_indicators() //not thread-safe
 {
+	if (this->flag_cursor) this->refresh_var_labels();
+	if (this->flag_full) return;
+	
 	Glib::RefPtr<Gtk::Adjustment> adj = this->scrollbar.get_adjustment();
 	AxisRange range_x = this->axis_x_range();
 	unsigned int val, upper = this->data_range().max();
@@ -528,12 +541,9 @@ void Recorder::refresh_scroll() //not thread-safe
 		val = range_x.min();
 	
 	this->flag_refresh_scroll = true;
-	adj->configure(val, 0, upper, 1, range_x.length() / 2, range_x.length()); //doesn't emit signal_value_changed
+	adj->configure(val, 0, upper, 1, range_x.length() / 2, range_x.length());
 	this->flag_refresh_scroll = false;
 	this->scrollbar.set_visible(val > 0 || adj->get_page_size() < adj->get_upper());
-	
-	if (this->flag_goto_end && this->cursor_x > 0)
-		this->refresh_var_labels();
 }
 
 void Recorder::on_scroll() //on scrollbar.signal_value_changed()
@@ -560,7 +570,8 @@ bool Recorder::on_button_press(GdkEventButton* event)
 	bool zoom_in = (event->button == 1); //is left button?
 	if (!zoom_in && this->flag_extend) return true;
 	
-	AxisRange range_scr_x(PlottingArea::Border_X_Left, this->areas[0].get_allocation().get_width());
+	AxisRange range_scr_x(PlottingArea::Border_X_Left,
+	                      this->areas[0].get_allocation().get_width());
 	
 	AxisRange range_x = this->axis_x_range();
 	unsigned int x = range_scr_x.map(event->x, range_x);
@@ -585,7 +596,7 @@ bool Recorder::on_button_press(GdkEventButton* event)
 
 bool Recorder::auto_set_scroll_mode(Glib::RefPtr<Gtk::Adjustment> adj) //default param is that of the scrollbar
 {
-	if (!this->flag_recording || !this->flag_not_full)
+	if (!this->flag_recording || this->flag_full)
 		this->flag_goto_end = false;
 	else
 		this->flag_goto_end = (adj->get_value() + adj->get_page_size() >= adj->get_upper());
@@ -613,6 +624,7 @@ inline std::string float_to_str(float val, std::ostringstream& oss)
 
 bool Recorder::on_motion_notify(GdkEventMotion* motion_event)
 {
+	this->flag_cursor = (this->cursor_x >= PlottingArea::Border_X_Left);
 	this->cursor_x = motion_event->x;
 	this->refresh_var_labels();
 	return true;
@@ -620,15 +632,15 @@ bool Recorder::on_motion_notify(GdkEventMotion* motion_event)
 
 bool Recorder::on_leave_notify(GdkEventCrossing* crossing_event)
 {
-	this->cursor_x = -1.0;
+	this->flag_cursor = false;
 	this->refresh_var_labels();
 	return true;
 }
 
 void Recorder::refresh_var_labels()
 {
-	bool show_values = false; float x;
-	if (this->cursor_x > PlottingArea::Border_X_Left) {
+	float x; bool show_values = false;
+	if (this->flag_cursor) {
 		AxisRange range_scr_x(PlottingArea::Border_X_Left,
 		                      this->areas[0].get_allocation().get_width());
 		x = range_scr_x.map(this->cursor_x, this->axis_x_range());
@@ -637,7 +649,7 @@ void Recorder::refresh_var_labels()
 	
 	if (show_values) {
 		Glib::ustring str_label;
-	
+		
 		for (unsigned int i = 0; i < this->var_cnt; i++) {
 			oss.precision(this->ptrs[i].precision_csv);
 			str_label = this->ptrs[i].name_friendly + ": "

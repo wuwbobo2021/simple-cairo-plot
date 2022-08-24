@@ -2,44 +2,31 @@
 An easy-to-use component for continuous recording and plotting of variables. it depends on `gtkmm-3.0`, and is implemented with Cairo.
 
 ## Demo
-To ceeate static library:
 ```
 git clone https://github.com/wuwbobo2021/simple-cairo-plot
-mv simple-cairo-plot/demo.cpp .
 cd simple-cairo-plot
-g++ -c circularbuffer.cpp plottingarea.cpp recorder.cpp frontend.cpp `pkg-config gtkmm-3.0 --cflags --libs` -O3
-ar rcs libsimple-cairo-plot.a circularbuffer.o plottingarea.o recorder.o frontend.o
-cd ..
-g++ demo.cpp -I./simple-cairo-plot -L./simple-cairo-plot -lsimple-cairo-plot `pkg-config gtkmm-3.0 --cflags --libs` -O3 -o test_program
-./test_program
-```
-To create shared library:
-```
-git clone https://github.com/wuwbobo2021/simple-cairo-plot
-mv simple-cairo-plot/demo.cpp .
-cd simple-cairo-plot
-g++ circularbuffer.cpp plottingarea.cpp recorder.cpp frontend.cpp `pkg-config gtkmm-3.0 --cflags --libs` -O3 -shared -fPIC -o ../libsimple-cairo-plot.so
-cd ..
-g++ demo.cpp `pkg-config gtkmm-3.0 --cflags --libs` -I./simple-cairo-plot -L. -lsimple-cairo-plot -O3 -o test_program
-./test_program
+make demo
 ```
 You can modify `demo.cpp` to change the wave form and make other adjustments, like speed, buffer size or axis-y range.
 
-For 64-bit Windows, refer to https://github.com/tschoonj/GTK-for-Windows-Runtime-Environment-Installer.
+Install:
+```
+sudo make -e prefix=/usr
+```
+
+For 64-bit Windows, refer to: <https://github.com/tschoonj/GTK-for-Windows-Runtime-Environment-Installer>.
 
 For 32-bit Windows:
-1. Look for a mirror of MSYS2 in https://www.msys2.org/dev/mirrors;
+1. Look for a mirror of MSYS2 in <https://www.msys2.org/dev/mirrors>;
 2. Download `msys2-i686-latest.sfx.exe`, place it under a short path and extract it;
-3. Follow the instruments in https://wiki.gnome.org/Projects/gtkmm/MSWindows.
-
-Note: On Windows, the output executable must have `.exe` suffix.
+3. Follow the instruments in <https://wiki.gnome.org/Projects/gtkmm/MSWindows>.
 
 ## Classes
 `AxisRange`: Closed range between two `float` values. It supports many operations, including mapping of a given value to another range. All of it's functions are inlined.
 
-`CircularBuffer`: Where the data should be pushed back to update the plotting in `PlottingArea`. After it's full, it discards an item each time a new item is pushed into, but it avoids moving every item in the memory region. Most of its simple functions are inlined.
+`CircularBuffer`: Where the data should be pushed back to update the graph in `PlottingArea`. After it becomes full, it discards an item each time a new item is pushed into, but it avoids moving every item in the memory region. An optimized algorithm finding min/max values is implemented here, and spike detection can be enabled to avoid flickering of spikes when the x-axis index step for data plotting is adjusted for a wide index range. Most of its simple functions are inlined.
 
-`PlottingArea`: Implements a graph box for a single buffer without scroll box. It only supports a single variable, and values should be pushed into its buffer manually.
+`PlottingArea`: Implements a graph box for a single buffer without scroll box. It only supports a single variable, and values should be pushed into its buffer manually. Axis ranges can be set automatically or manually, and the grid with tick values can be either fixed or auto-adjusted.
 
 `VariableAccessPtr`: Pointer of an variable or a function which has a `void*` parameter and returns a `float` value. Pointer of a member function of class `T` which returns a `float` value and has no extra parameters can be created by:
 ```

@@ -12,7 +12,7 @@
 #include <glibmm/dispatcher.h>
 #include <gtkmm/drawingarea.h>
 
-#include "circularbuffer.h"
+#include <simple-cairo-plot/circularbuffer.h>
 
 namespace SimpleCairoPlot
 {

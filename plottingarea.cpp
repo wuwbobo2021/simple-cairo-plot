@@ -1,10 +1,10 @@
 // by wuwbobo2021 <https://github.com/wuwbobo2021>, <wuwbobo@outlook.com>
 // If you have found bugs in this program, please pull an issue, or contact me.
 
+#include <simple-cairo-plot/plottingarea.h>
+
 #include <chrono>
 
-#include "plottingarea.h"
-	#include <iostream>
 using namespace SimpleCairoPlot;
 
 PlottingArea::PlottingArea() {}
@@ -123,8 +123,10 @@ bool PlottingArea::set_axis_y_range_length_min(float length_min)
 
 bool PlottingArea::set_range_x(AxisRange range)
 {
+	range.set_int();
 	if (range.length() == 0) return false;
 	if (! this->source->is_valid_range(range)) return false;
+	
 	this->range_x = range;
 	this->adjust_index_step();
 	return true;

@@ -14,7 +14,7 @@
 #include <gtkmm/scrollbar.h>
 #include <gtkmm/label.h>
 
-#include "plottingarea.h"
+#include <simple-cairo-plot/plottingarea.h>
 
 namespace SimpleCairoPlot
 {
@@ -112,27 +112,27 @@ class Recorder: public Gtk::Box
 	
 	Gtk::Box scrollbox; Gtk::Scrollbar scrollbar; Gtk::Label space_left_of_scroll;
 	Gtk::Box box_var_names; Gtk::Label* var_labels; Gtk::Label label_cursor_x, label_axis_x_unit;
-	Glib::Dispatcher dispatcher_refresh_scroll; volatile bool flag_refresh_scroll = false;
+	Glib::Dispatcher dispatcher_refresh_indicators; volatile bool flag_refresh_scroll = false;
 	
 	std::thread* thread_record = NULL,
 	           * thread_refresh = NULL;
 	volatile bool flag_recording = false;
 	bool flag_spike_check = false; //determined by buf_size > Plot_Data_Amount_Limit_Min
-	bool option_record_until_full = false;
+	bool option_stop_on_full = false;
 	float interval = 10; unsigned int redraw_interval = 20; //in milliseconds
 	std::chrono::system_clock::time_point tp_start;
 	
 	bool option_extend_index_range = false;
 	volatile bool flag_goto_end = false, flag_extend = false;
 	
-	volatile bool flag_not_full = true;
+	volatile bool flag_full = false;
 	sigc::signal<void()> sig_full;
 	Glib::Dispatcher dispatcher_sig_full;
 	
 	float axis_x_unit = 0; bool flag_axis_x_unique_unit = false;
 	std::string axis_x_unit_name = "";
 	
-	volatile float cursor_x = -1.0; //-1.0 means the cursor is not entered
+	volatile bool flag_cursor = false; volatile float cursor_x = 0;
 	std::ostringstream oss; //used to show x,y values at the cursor's location
 	
 	void record_loop();
@@ -143,7 +143,7 @@ class Recorder: public Gtk::Box
 	bool on_motion_notify(GdkEventMotion* motion_event);
 	bool on_leave_notify(GdkEventCrossing* crossing_event);
 	
-	void refresh_scroll();
+	void refresh_indicators();
 	void refresh_areas(bool forced_check_range_y = false, bool forced_adapt = false);
 	bool auto_set_scroll_mode();
 	bool auto_set_scroll_mode(Glib::RefPtr<Gtk::Adjustment> adj);
@@ -173,7 +173,7 @@ public:
 	// direct access to each data buffer. it is possible to push data manually
 	// into the buffers, and call set_axis_x_range() at last to show them.
 	CircularBuffer& buffer(unsigned int index) const;
-		
+	
 	AxisRange axis_x_range() const; //index range in the buffers
 	AxisRange axis_y_range(unsigned int index) const;
 	
@@ -199,7 +199,7 @@ public:
 	bool set_axis_divider(unsigned int x_div, unsigned int y_div); //how many segments the axis should be divided into
 	void set_option_fixed_axis_scale(bool set); //do not adjust scale values, default: true
 	
-	void set_option_record_until_full(bool set); //stop after the buffers become full, default: false
+	void set_option_stop_on_full(bool set); //stop recording when buffers become full, default: false
 	
 	void set_option_auto_extend_range_x(bool set); //extend index range to show all existing data. default: false
 	void set_option_auto_set_range_y(unsigned int index, bool set); //if not, the user must set the range for each area. default: true
@@ -249,7 +249,7 @@ inline AxisRange Recorder::data_range_max() const
 
 inline float Recorder::t_data(unsigned int i) const
 {
-	return (this->bufs[0].count_overwriten() + i) * this->axis_x_unit;
+	return (this->bufs[0].count_overwritten() + i) * this->axis_x_unit;
 }
 
 inline float Recorder::t_first_data() const
@@ -270,7 +270,7 @@ inline std::chrono::system_clock::time_point Recorder::time_start() const
 inline std::chrono::system_clock::time_point Recorder::time_data(unsigned int i) const
 {
 	return this->tp_start + std::chrono::microseconds(
-		(long int)((this->bufs[0].count_overwriten() + i) * 1000.0 * this->interval)
+		(long int)((this->bufs[0].count_overwritten() + i) * 1000.0 * this->interval)
 	);
 }
 

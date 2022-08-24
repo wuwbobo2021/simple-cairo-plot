@@ -1,7 +1,7 @@
 // by wuwbobo2021 <https://github.com/wuwbobo2021>, <wuwbobo@outlook.com>
 // If you have found bugs in this program, please pull an issue, or contact me.
 
-#include "circularbuffer.h"
+#include <simple-cairo-plot/circularbuffer.h>
 
 #include <limits>
 
@@ -168,7 +168,7 @@ unsigned int CircularBuffer::get_spikes(Range range, unsigned int* buf_out)
 		if (cur < range.min()) continue;
 		if (cur > range.max()) break;
 		
-		*buf_out = this->buf_spike_item(i) - this->count_overwriten();
+		*buf_out = this->buf_spike_item(i) - this->count_overwritten();
 		cnt_sp++; buf_out++;
 	}
 	

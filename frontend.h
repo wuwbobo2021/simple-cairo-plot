@@ -4,7 +4,7 @@
 #ifndef SIMPLE_CAIRO_PLOT_FRONTEND_H
 #define SIMPLE_CAIRO_PLOT_FRONTEND_H
 
-#include "recorder.h"
+#include <simple-cairo-plot/recorder.h>
 
 #include <gtkmm/window.h>
 #include <gtkmm/filechooserdialog.h>

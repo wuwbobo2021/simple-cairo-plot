@@ -7,7 +7,7 @@
 #include <stdexcept>
 #include <mutex>
 
-#include "axisrange.h" //<cmath> included
+#include <simple-cairo-plot/axisrange.h> //<cmath> included
 
 #ifndef __GNUC__ //in this case <cmath> functions are not built-in (not optimized)
 	#ifndef fabs
@@ -65,7 +65,7 @@ public:
 	Range range() const;
 	Range range_max() const;
 	bool is_full() const;
-	unsigned long int count_overwriten() const;
+	unsigned long int count_overwritten() const;
 	unsigned long int count_overall() const;
 	Range range_to_abs(Range range) const;
 	Range range_to_rel(Range range_abs) const;
@@ -144,7 +144,7 @@ inline bool CircularBuffer::is_full() const
 	return this->cnt == this->bufsize;
 }
 
-inline unsigned long int CircularBuffer::count_overwriten() const
+inline unsigned long int CircularBuffer::count_overwritten() const
 {
 	return this->cnt_overall - this->cnt;
 }
@@ -157,14 +157,14 @@ inline unsigned long int CircularBuffer::count_overall() const
 inline Range CircularBuffer::range_to_abs(Range range) const
 {
 	Range range_abs = range;
-	range_abs.move(this->count_overwriten());
+	range_abs.move(this->count_overwritten());
 	return range_abs;
 }
 
 inline Range CircularBuffer::range_to_rel(Range range_abs) const
 {
 	Range range = range_abs;
-	range.move(-this->count_overwriten());
+	range.move(-this->count_overwritten());
 	return range;
 }
 
