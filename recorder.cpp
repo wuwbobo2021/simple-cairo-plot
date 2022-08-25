@@ -1,5 +1,6 @@
 // by wuwbobo2021 <https://github.com/wuwbobo2021>, <wuwbobo@outlook.com>
 // If you have found bugs in this program, please pull an issue, or contact me.
+// Licensed under LGPL version 2.1.
 
 #include <simple-cairo-plot/recorder.h>
 
@@ -10,7 +11,6 @@
 #include <fstream>
 #include <sstream>
 #include <glibmm/timer.h>
-#include <gtkmm/cssprovider.h>
 #include <gtkmm/separator.h>
 
 using namespace std::chrono;
@@ -77,9 +77,6 @@ void Recorder::init(std::vector<VariableAccessPtr>& ptrs, unsigned int buf_size)
 	sigc::slot<bool, GdkEventMotion*> slot_motion = sigc::mem_fun(*this, &Recorder::on_motion_notify);
 	sigc::slot<bool, GdkEventCrossing*> slot_leave = sigc::mem_fun(*this, &Recorder::on_leave_notify);
 	
-	std::string str_css;
-	Glib::RefPtr<Gtk::CssProvider> css_provider = Gtk::CssProvider::create();
-	
 	for (unsigned int i = 0; i < this->var_cnt; i++) {
 		if (this->flag_spike_check)
 			this->bufs[i].set_spike_check_ref_min(100.0 * pow(0.1, this->ptrs[i].precision_csv));
@@ -107,10 +104,11 @@ void Recorder::init(std::vector<VariableAccessPtr>& ptrs, unsigned int buf_size)
 		if (this->ptrs[i].name_csv == "") this->ptrs[i].name_csv = "var" + std::to_string(i + 1);
 		if (this->ptrs[i].name_friendly == "") this->ptrs[i].name_friendly = this->ptrs[i].name_csv;
 		
-		this->var_labels[i].set_name("cairo_plot_label_var" + std::to_string(i + 1));
-		str_css += '#' + this->var_labels[i].get_name() + '\n' +
-		           "{\n\tcolor: " + this->ptrs[i].color_plot.to_string() + "\n}\n\n";
-		this->var_labels[i].get_style_context()->add_provider(css_provider, 0);
+		Gdk::RGBA color = this->ptrs[i].color_plot;
+		Pango::Attribute attr_color = Pango::Attribute::create_attr_foreground
+			(color.get_red_u(), color.get_green_u(), color.get_blue_u());
+		Pango::AttrList attrs; attrs.insert(attr_color);
+		this->var_labels[i].set_attributes(attrs);
 		this->box_var_names.pack_start(this->var_labels[i], Gtk::PACK_SHRINK);
 	}
 	
@@ -119,7 +117,6 @@ void Recorder::init(std::vector<VariableAccessPtr>& ptrs, unsigned int buf_size)
 	this->scrollbox.pack_start(this->scrollbar, Gtk::PACK_EXPAND_WIDGET);
 	this->pack_start(this->scrollbox, Gtk::PACK_SHRINK);
 	
-	css_provider->load_from_data(str_css);
 	this->oss.setf(std::ios::fixed);
 	this->refresh_var_labels();
 	this->box_var_names.pack_start(this->label_cursor_x, Gtk::PACK_SHRINK);

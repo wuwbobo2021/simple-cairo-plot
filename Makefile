@@ -11,6 +11,7 @@ objects = circularbuffer.o plottingarea.o recorder.o frontend.o
 libdir = $(prefix)/lib
 target = $(libdir)/libsimple-cairo-plot.a
 
+AR = gcc-ar
 ifeq '$(findstring ;,$(PATH))' ';'
 # Windows (neither MSYS2 nor Cygwin)
 MKDIR = mkdir
@@ -50,4 +51,4 @@ demo: $(target_demo)
 .PHONY: clean
 clean:
 	-$(RMDIR) lib include
-	-$(RM) *.o *.exe
+	-$(RM) *.o target_demo
