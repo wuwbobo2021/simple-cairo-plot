@@ -2,7 +2,7 @@
 An easy-to-use component for continuous recording and plotting of variables. it depends on `gtkmm-3.0`, and is implemented with Cairo.
 
 ## Demo
-Packages needed: `gcc`, `make`, `git`(optional), `libgtkmm-3.0-dev`.
+Packages needed: `gcc`, `pkg-config`, `make`, `libgtkmm-3.0-dev`, `git`(optional).
 ```
 git clone https://github.com/wuwbobo2021/simple-cairo-plot
 cd simple-cairo-plot
