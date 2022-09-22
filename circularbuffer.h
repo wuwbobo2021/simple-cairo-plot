@@ -6,7 +6,8 @@
 #define SIMPLE_CAIRO_PLOT_CIRCULAR_BUFFER_H
 
 #include <stdexcept>
-#include <mutex>
+#include <thread> //this_thread::sleep_for()
+#include <atomic> //atomic_flag, atomic_uint
 
 #include <simple-cairo-plot/axisrange.h> //<cmath> included
 
@@ -22,9 +23,7 @@ namespace SimpleCairoPlot
 {
 
 class CircularBuffer
-{
-	std::mutex mtx;
-	
+{	
 	float* buf = NULL; float* bufend = NULL;
 	float* end = NULL;
 	unsigned int bufsize = 0, cnt = 0;
@@ -35,12 +34,20 @@ class CircularBuffer
 	unsigned long int* buf_spike = NULL, * buf_spike_bufend = NULL;
 	unsigned long int* buf_spike_end = NULL;
 	unsigned int buf_spike_size = 0, buf_spike_cnt = 0;
-	float stable_av = 0;
+	float spike_check_av = 0;
 	
 	// used for optimization of get_value_range()
 	Range range_abs_i_last_scan = Range(-1, -1),
 	      range_abs_i_min_max_last_scan = Range(0, 0),
 	      range_min_max_last_scan = Range(0, 0);
+	
+	// used for optimization of get_average()
+	Range range_abs_i_last_av = Range(-1, -1);
+	float last_av = 0;
+	
+	// used to avoid multithreaded conflicts
+	std::atomic_flag flag_lock = ATOMIC_FLAG_INIT; //atomic_flag is not implemented with mutex
+	std::atomic_uint read_lock_counter; //atomic_uint is not implemented with mutex on most platforms
 	
 	void copy_from(const CircularBuffer& from);
 	float* item_addr(unsigned int i) const;
@@ -49,9 +56,10 @@ class CircularBuffer
 	void spike_check();
 	
 public:
-	
+	// locks for writing (except the constructor without parameter and the destructor)
 	CircularBuffer(); void init(unsigned int sz); //init() must be called if this constructor is used
 	CircularBuffer(unsigned int sz);
+	CircularBuffer(CircularBuffer& from); //`from` is locked here for reading
 	CircularBuffer(const CircularBuffer& from);
 	CircularBuffer& operator=(const CircularBuffer& buf);
 	~CircularBuffer();
@@ -71,20 +79,29 @@ public:
 	Range range_to_abs(Range range) const;
 	Range range_to_rel(Range range_abs) const;
 	
+	// locks for writing
 	void clear(bool clear_history_count = false);
 	void erase();
 	void push(float val, bool spike_check = true);
 	void load(const float* data, unsigned int cnt, bool spike_check = true);
 	
+	// get_spikes() locks for reading
 	void set_spike_check_ref_min(float val);
 	unsigned int get_spikes(unsigned int* buf_out);
 	unsigned int get_spikes(Range range, unsigned int* buf_out);
+	unsigned int get_spikes(Range range, unsigned long int* buf_out);
 	
-	// get_average() is not optimized; get_value_range() is optimized for range moving right.
-	float get_average(unsigned int chk_step = 1);
-	float get_average(Range range, unsigned int chk_step = 1);
+	// locks for reading; optimized for scrolling right
 	Range get_value_range(unsigned int chk_step = 1);
 	Range get_value_range(Range range, unsigned int chk_step = 1);
+	float get_average(unsigned int chk_step = 1);
+	float get_average(Range range, unsigned int chk_step = 1);
+	
+	// lock the buffer outside ONLY before writing into or reading multiple data
+	// from the buffer through operator[]; member functions that lock for writing
+	// should NOT be called inside that lock() and unlock() pair.
+	void lock(bool for_writing = false);
+	void unlock();
 };
 
 inline float* CircularBuffer::item_addr(unsigned int i) const
@@ -172,6 +189,7 @@ inline Range CircularBuffer::range_to_rel(Range range_abs) const
 inline void CircularBuffer::push(float val, bool spike_check)
 {
 	if (! this->buf) return;
+	this->lock(true);
 	
 	*this->end = val;
 	if (this->cnt < this->bufsize) this->cnt++;
@@ -183,6 +201,8 @@ inline void CircularBuffer::push(float val, bool spike_check)
 	
 	if (spike_check)
 		this->spike_check();
+	
+	this->unlock();
 }
 
 inline unsigned int CircularBuffer::spike_buffer_size() const
@@ -194,20 +214,20 @@ inline void CircularBuffer::spike_check()
 {
 	using namespace std;
 	
-	if (this->cnt == 1) this->stable_av = this->last_item();	
+	if (this->cnt == 1) this->spike_check_av = this->last_item();	
 	if (this->cnt < 3) return;
 	
-	float ref = this->stable_av;
+	float ref = this->spike_check_av;
 	if (fabs(ref) < spike_check_ref_min)
 		ref = spike_check_ref_min;
 	
 	float dd =  this->last_item() - this->buf[this->cnt - 2]
 	         - (this->buf[this->cnt - 2] - this->buf[this->cnt - 3]);
 	
-	if (stable_av != 0 && fabs(dd / ref) > 0.05)
+	if (spike_check_av != 0 && fabs(dd / ref) > 0.05)
 		this->buf_spike_push(this->cnt_overall - 2);
 	else
-		this->stable_av = 0.9*this->stable_av + 0.1*this->last_item();
+		this->spike_check_av = 0.9*this->spike_check_av + 0.1*this->last_item();
 }
 
 inline void CircularBuffer::set_spike_check_ref_min(float val)
@@ -244,14 +264,39 @@ inline void CircularBuffer::buf_spike_push(unsigned long int val)
 		this->buf_spike_end = this->buf_spike;
 }
 
+inline Range CircularBuffer::get_value_range(unsigned int chk_step)
+{
+	return this->get_value_range(this->range(), chk_step);
+}
+
 inline float CircularBuffer::get_average(unsigned int chk_step)
 {
 	return this->get_average(this->range(), chk_step);
 }
 
-inline Range CircularBuffer::get_value_range(unsigned int chk_step)
+inline void CircularBuffer::lock(bool for_writing)
 {
-	return this->get_value_range(this->range(), chk_step);
+	using namespace std::chrono;
+	using namespace std::this_thread;
+	
+	// write operation must wait for previous operation;
+	// read operation must wait for previous write operation.
+	if (this->flag_lock.test_and_set(std::memory_order_acquire)
+	&& (for_writing || this->read_lock_counter == 0)) {
+		unsigned char i = 0;
+		while (this->flag_lock.test_and_set(std::memory_order_acquire)) {
+			sleep_for(microseconds((int)pow(2, i))); if (i < 12) i++;
+		}
+	}
+	
+	if (! for_writing)
+		++this->read_lock_counter; //read_lock_counter > 0: locked for reading
+}
+
+inline void CircularBuffer::unlock()
+{
+	if (this->read_lock_counter == 0 || --this->read_lock_counter == 0)
+		this->flag_lock.clear(std::memory_order_release);
 }
 
 }

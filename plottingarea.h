@@ -23,7 +23,7 @@ const unsigned int Plot_Data_Amount_Limit_Min = 512;
 class PlottingArea: public Gtk::DrawingArea
 {
 	CircularBuffer* source = NULL; //data source
-	unsigned int* buf_spike = NULL;
+	unsigned long int* buf_spike = NULL;
 	
 	// range of indexes in the buffer and y-axis values that are covered by the area
 	AxisRange range_x = AxisRange(0, 100), range_y = AxisRange(0, 10);
@@ -34,6 +34,7 @@ class PlottingArea: public Gtk::DrawingArea
 	float axis_y_length_min = 0; //minimum range length of y-axis range in auto-set mode
 	
 	Gdk::RGBA color_grid, color_text; //auto set in PlottingArea::on_style_updated()
+	const std::vector<double> dash_pattern = {10, 2, 1, 2}; //for drawing average line
 	
 	// used for auto-refresh mode
 	std::thread* thread_timer;
@@ -57,6 +58,7 @@ class PlottingArea: public Gtk::DrawingArea
 	void adjust_index_step();
 	Gtk::Allocation draw_grid(const Cairo::RefPtr<Cairo::Context>& cr);
 	void plot(const Cairo::RefPtr<Cairo::Context>& cr, Gtk::Allocation alloc);
+	void draw_average_line(const Cairo::RefPtr<Cairo::Context>& cr, Gtk::Allocation alloc);
 	
 public:
 	enum {Border_X_Left = 50, Border_Y = 12};
@@ -66,14 +68,16 @@ public:
 	std::string axis_x_unit_name = "", axis_y_unit_name = ""; //both names should be short, especially axis_y_unit_name
 	
 	Gdk::RGBA color_plot; bool option_anti_alias = false;
-	bool option_fixed_scale = true;
+	bool option_fixed_scale = true; //note: tick values of fixed scale can have many decimal digits
 	
 	bool option_auto_set_range_y = true; //determine range_y automatically
 	bool option_auto_set_zero_bottom = true; //if the bottom of range y should be zero in auto-set mode
 	
 	volatile bool option_auto_goto_end = true; //set range_x to the end of buffer automatically
 	volatile bool option_auto_extend_range_x = false; //extend range_x to show all data when option_auto_goto_end is on
-		
+	
+	bool option_show_average_line = false; //this requires extra calculation, though it was optimized
+	
 	PlottingArea(); void init(CircularBuffer* buf);
 	PlottingArea(CircularBuffer* buf);
 	virtual ~PlottingArea();

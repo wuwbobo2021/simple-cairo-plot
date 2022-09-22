@@ -25,7 +25,7 @@ void PlottingArea::init(CircularBuffer* buf)
 	
 	bool except_caught = false;
 	try {
-		this->buf_spike = new unsigned int[this->source->spike_buffer_size()];
+		this->buf_spike = new unsigned long int[this->source->spike_buffer_size()];
 	} catch (std::bad_alloc) {
 		except_caught = true;
 	}
@@ -235,7 +235,11 @@ bool PlottingArea::on_draw(const Cairo::RefPtr<Cairo::Context>& cr)
 		this->flag_adapt = this->flag_check_range_y = false;
 	}
 	
-	this->plot(cr, this->draw_grid(cr));
+	Gtk::Allocation inner_alloc = this->draw_grid(cr);
+	this->plot(cr, inner_alloc);
+	if (this->option_show_average_line)
+		this->draw_average_line(cr, inner_alloc);
+	
 	return true;
 }
 
@@ -384,7 +388,7 @@ void PlottingArea::plot(const Cairo::RefPtr<Cairo::Context>& cr, Gtk::Allocation
 	float val_first = (*this->source)[this->range_x.min()];
 	cr->move_to(w_cur, this->range_y.map_reverse(val_first, alloc_y));
 	
-	for (unsigned int i = this->range_x.min() + 1;
+	for (unsigned int i  = this->range_x.min() + 1;
 	                  i <= this->range_x.max() + 1 && i < this->source->count();
 	                  i += this->index_step) {
 		w_cur += w_unit;
@@ -398,7 +402,7 @@ void PlottingArea::plot(const Cairo::RefPtr<Cairo::Context>& cr, Gtk::Allocation
 		unsigned int cnt_sp = this->source->get_spikes(this->range_x, this->buf_spike);
 		
 		for (unsigned int i_sp = 0, i; i_sp < cnt_sp; i_sp++) {
-			i = this->buf_spike[i_sp];
+			i = this->buf_spike[i_sp] - this->source->count_overwritten();
 			if (i + 1 >= this->source->count()) break;
 			w_cur = this->range_x.map(i, alloc_x);
 			cr->move_to(w_cur, this->range_y.map_reverse((*this->source)[i], alloc_y));
@@ -408,4 +412,22 @@ void PlottingArea::plot(const Cairo::RefPtr<Cairo::Context>& cr, Gtk::Allocation
 	}
 	
 	cr->stroke();
+}
+
+void PlottingArea::draw_average_line(const Cairo::RefPtr<Cairo::Context>& cr, Gtk::Allocation alloc)
+{
+	AxisRange alloc_y(alloc.get_y(), alloc.get_y() + alloc.get_height());
+	
+	float av = this->source->get_average(this->range_x, this->index_step);
+	float y_cur = this->range_y.map_reverse(av, alloc_y);
+	
+	cr->set_line_width(1.0);
+	set_cr_color(cr, this->color_text);
+	cr->set_dash(this->dash_pattern, 0);
+	
+	cr->move_to(alloc.get_x(), y_cur);
+	cr->line_to(alloc.get_x() + alloc.get_width(), y_cur);
+	cr->stroke();
+	
+	cr->unset_dash();
 }

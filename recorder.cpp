@@ -210,8 +210,8 @@ bool Recorder::open_csv(const std::string& file_path)
 	while (ifs && !ifs.eof()) {
 		ifs.getline(str, Line_Length_Max); //'\n' is not stored into str 
 		
-		// skip comment line or empty line
-		if (str[0] == '#' || str[0] == '/' || str[0] == '\r' || str[0] == '\0') continue;
+		if (str[0] == '#' || str[0] == ';' || str[0] == '/' || str[0] == '\r' || str[0] == '\0')
+			continue; // skip comment line or empty line
 		
 		if (flag_head) { //header of the csv file
 			this->clear(); //put here to avoid clearing when opening an empty file
@@ -378,6 +378,8 @@ bool Recorder::set_axis_x_range(AxisRange range)
 			(Gtk::Adjustment::create(range.min(), 0, this->data_range().max(), 1, 1, range.length()));
 	
 	this->refresh_areas(true, true);
+	
+	this->flag_refresh_scroll = true;
 	this->dispatcher_refresh_indicators.emit();
 	return true;
 }
@@ -449,6 +451,12 @@ void Recorder::set_option_show_axis_y_values(bool set)
 {
 	for (unsigned int i = 0; i < this->var_cnt; i++)
 		this->areas[i].option_show_axis_y_values = set;
+}
+
+void Recorder::set_option_show_average_line(unsigned int index, bool set)
+{
+	if (index > this->var_cnt - 1) return;
+	this->areas[index].option_show_average_line = set;
 }
 
 void Recorder::set_option_anti_alias(bool set)
@@ -526,7 +534,7 @@ void Recorder::refresh_loop()
 void Recorder::refresh_indicators() //not thread-safe
 {
 	if (this->flag_cursor) this->refresh_var_labels();
-	if (this->flag_full) return;
+	if (this->flag_full && !this->flag_refresh_scroll) return;
 	
 	Glib::RefPtr<Gtk::Adjustment> adj = this->scrollbar.get_adjustment();
 	AxisRange range_x = this->axis_x_range();

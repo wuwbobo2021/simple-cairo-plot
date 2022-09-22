@@ -13,13 +13,15 @@ void CircularBuffer::init(unsigned int sz)
 	if (sz == 0)
 		throw std::invalid_argument("CircularBuffer::init(): invalid buffer size 0.");
 	
-	this->mtx.lock();
+	this->read_lock_counter = 0;
+	this->lock(true);
 	
 	if (this->buf != NULL) {delete[] this->buf; this->buf = NULL;}
 	if (this->buf_spike != NULL) {delete[] this->buf_spike; this->buf_spike = NULL;}
 	
 	this->bufsize = sz;
-	this->buf_spike_size = this->bufsize / 10 + 1;
+	this->buf_spike_size = this->bufsize / 32;
+	if (this->buf_spike_size < 16) this->buf_spike_size = 16;
 	
 	bool except_caught = false;
 	try {
@@ -30,7 +32,7 @@ void CircularBuffer::init(unsigned int sz)
 	}
 	if (except_caught || this->buf == NULL || this->buf_spike == NULL) {
 		if (this->buf_spike) {delete[] this->buf_spike; this->buf_spike = NULL;}
-		throw std::bad_alloc();
+		this->unlock(); throw std::bad_alloc();
 	}
 	
 	for (unsigned int i = 0; i < this->bufsize; i++)
@@ -38,9 +40,9 @@ void CircularBuffer::init(unsigned int sz)
 	
 	this->bufend = this->buf + this->bufsize - 1;
 	this->buf_spike_bufend = this->buf_spike + this->buf_spike_size - 1;
-	this->clear(true);
 	
-	this->mtx.unlock();
+	this->unlock();
+	this->clear(true);
 }
 
 CircularBuffer::CircularBuffer() {}
@@ -52,9 +54,8 @@ CircularBuffer::CircularBuffer(unsigned int sz)
 
 void CircularBuffer::copy_from(const CircularBuffer& from)
 {
-	this->mtx.lock();
-	
 	this->clear(true);
+	this->lock(true);
 	
 	if (from.bufsize == this->bufsize) {
 		for (unsigned int i = 0; i < this->bufsize; i++)
@@ -86,7 +87,15 @@ void CircularBuffer::copy_from(const CircularBuffer& from)
 	if (this->end > this->bufend)
 		this->end = this->buf;
 	
-	this->mtx.unlock();
+	this->unlock();
+}
+
+CircularBuffer::CircularBuffer(CircularBuffer& from)
+{
+	this->init(from.bufsize);
+	from.lock();
+	this->copy_from(from);
+	from.unlock();
 }
 
 CircularBuffer::CircularBuffer(const CircularBuffer& from)
@@ -108,6 +117,8 @@ CircularBuffer::~CircularBuffer()
 
 void CircularBuffer::clear(bool clear_count_history)
 {
+	this->lock(true);
+	
 	this->cnt = 0;
 	if (clear_count_history)
 		this->cnt_overall = 0;
@@ -116,28 +127,29 @@ void CircularBuffer::clear(bool clear_count_history)
 	
 	this->buf_spike_cnt = 0;
 	this->buf_spike_end = this->buf_spike;
-	this->stable_av = 0;
+	this->spike_check_av = 0;
 	
 	this->range_abs_i_last_scan.set(-1, -1);
+	this->range_abs_i_last_av.set(-1, -1);
+	
+	this->unlock();
 }
 
 void CircularBuffer::erase()
 {
 	if (this->buf == NULL) return;
-	
-	this->mtx.lock();
-	
 	this->clear(true);
+	
+	this->lock();
 	for (unsigned int i = 0; i < this->bufsize; i++)
 		this->buf[i] = 0;
-	
-	this->mtx.unlock();
+	this->unlock();
 }
 
 void CircularBuffer::load(const float* data, unsigned int cnt, bool spike_check)
 {
 	if (cnt == 0) return;
-	this->mtx.lock();
+	this->lock(true);
 	
 	const float* p;
 	if (cnt <= this->bufsize)
@@ -152,14 +164,14 @@ void CircularBuffer::load(const float* data, unsigned int cnt, bool spike_check)
 		for (const float* pt = p; pt < p + cnt; pt++)
 			this->push(*pt, false);
 	}
-	this->mtx.unlock();
+	this->unlock();
 }
 
 unsigned int CircularBuffer::get_spikes(Range range, unsigned int* buf_out)
 {
 	if (this->buf_spike_cnt == 0) return 0;
 	
-	this->mtx.lock();
+	this->lock();
 	range = this->range().cut_range(range);
 	range = this->range_to_abs(range);
 	
@@ -168,37 +180,33 @@ unsigned int CircularBuffer::get_spikes(Range range, unsigned int* buf_out)
 		cur = this->buf_spike_item(i);
 		if (cur < range.min()) continue;
 		if (cur > range.max()) break;
-		
 		*buf_out = this->buf_spike_item(i) - this->count_overwritten();
 		cnt_sp++; buf_out++;
 	}
 	
-	this->mtx.unlock();
+	this->unlock();
 	return cnt_sp;
 }
 
-float CircularBuffer::get_average(Range range, unsigned int chk_step) //not optimized
+unsigned int CircularBuffer::get_spikes(Range range, unsigned long int* buf_out)
 {
-	if (this->cnt == 0) return 0;
+	if (this->buf_spike_cnt == 0) return 0;
 	
-	this->mtx.lock();
-	
+	this->lock();
 	range = this->range().cut_range(range);
-	unsigned int il = range.min(), ir = range.max();
-	if (chk_step == 0 || chk_step >= this->cnt / 2) chk_step = 1;
+	range = this->range_to_abs(range);
 	
-	float sum = 0;
-	float* p = this->item_addr(il);
-	for (unsigned int i = il; i <= ir; i += chk_step) {
-		sum += *p;
-		p += chk_step; if (p > this->bufend) p -= this->bufsize;
+	unsigned int cnt_sp = 0; unsigned long int cur;
+	for (unsigned int i = 0; i < this->buf_spike_cnt; i++) {
+		cur = this->buf_spike_item(i);
+		if (cur < range.min()) continue;
+		if (cur > range.max()) break;
+		*buf_out = this->buf_spike_item(i);
+		cnt_sp++; buf_out++;
 	}
 	
-	this->mtx.unlock();
-	
-	float cnt = (range.length() + 1.0) / chk_step;
-	if (cnt > (unsigned int)cnt) cnt = (unsigned int)cnt + 1;
-	return sum / cnt;
+	this->unlock();
+	return cnt_sp;
 }
 
 Range CircularBuffer::get_value_range(Range range, unsigned int chk_step)
@@ -206,6 +214,8 @@ Range CircularBuffer::get_value_range(Range range, unsigned int chk_step)
 	using std::numeric_limits;
 	
 	if (this->cnt == 0) return Range(0, 0);
+	range = this->range().cut_range(range);
+	if (chk_step == 0 || chk_step >= this->cnt / 2) chk_step = 1;
 	
 	Range range_i_last_scan = this->range_to_rel(this->range_abs_i_last_scan),
 	      range_i_min_max_last_scan = this->range_to_rel(this->range_abs_i_min_max_last_scan);
@@ -213,9 +223,8 @@ Range CircularBuffer::get_value_range(Range range, unsigned int chk_step)
 	if (range_i_last_scan.contain(range) && range.contain(range_i_min_max_last_scan))
 		return this->range_min_max_last_scan;
 	
-	this->mtx.lock();
+	this->lock();
 	
-	range = this->range().cut_range(range);
 	unsigned int il = range.min(), ir = range.max();
 	
 	unsigned int imin = il, imax = il;
@@ -229,8 +238,6 @@ Range CircularBuffer::get_value_range(Range range, unsigned int chk_step)
 		il = range_i_last_scan.max();
 	}
 	
-	if (chk_step == 0 || chk_step >= this->cnt / 2) chk_step = 1;
-	
 	float* p = this->item_addr(il);
 	for (unsigned int i = il; i <= ir; i += chk_step) {
 		cur = *p;
@@ -241,7 +248,7 @@ Range CircularBuffer::get_value_range(Range range, unsigned int chk_step)
 	
 	if (chk_step > 1 && this->buf_spike_cnt > 0) {
 		for (unsigned int i_sp = 0, i; i_sp < this->buf_spike_cnt; i_sp++) {
-			i = this->buf_spike_item(i_sp);
+			i = this->buf_spike_item(i_sp) - this->count_overwritten();
 			if (i < il) continue; if (i > ir) break;
 			cur = (*this)[i];
 			if (cur < min) {min = cur; imin = i;}
@@ -249,11 +256,87 @@ Range CircularBuffer::get_value_range(Range range, unsigned int chk_step)
 		}
 	}
 	
+	Range range_min_max = Range(min, max);
+	this->range_min_max_last_scan = range_min_max;
 	this->range_abs_i_last_scan = this->range_to_abs(range);
 	this->range_abs_i_min_max_last_scan = this->range_to_abs(Range(imin, imax));
-	this->range_min_max_last_scan = Range(min, max);
 	
-	this->mtx.unlock();
-	return this->range_min_max_last_scan;
+	this->unlock();
+	return range_min_max;
+}
+
+inline unsigned int div_ceil(unsigned int dividend, unsigned int divisor)
+{
+	unsigned int quo = dividend / divisor, rem = dividend % divisor;
+	if (rem > 0) quo++; return quo;
+}
+
+float CircularBuffer::get_average(Range range, unsigned int chk_step)
+{
+	if (this->cnt == 0) return 0;
+	range = this->range().cut_range(range);
+	
+	Range range_i_last_av = this->range_to_rel(this->range_abs_i_last_av);
+	if (range == range_i_last_av) return this->last_av;
+	
+	this->lock();
+	
+	bool flag_optimize = false, flag_add, flag_subtract;
+	unsigned int il, ir, sl, sr; //index bounds
+	unsigned int cnt = 0; float sum = 0;
+	
+	if (range_i_last_av.contain(range.min()) && range.contain(range_i_last_av.max())) {
+		flag_add      = (range.max() > range_i_last_av.max());
+		flag_subtract = (range.min() > range_i_last_av.min());
+		
+		unsigned int cnt_operate = 0;
+		if (flag_add) {
+			il = range_i_last_av.max() + 1; ir = range.max();
+			cnt_operate += ir - il + 1;
+		}
+		if (flag_subtract) {
+			sl = range_i_last_av.min(); sr = range.min() - 1;
+			cnt_operate += sr - sl + 1;
+		}
+		flag_optimize = (cnt_operate < range.length());
+	}
+	
+	if (! flag_optimize) {
+		flag_add = true; flag_subtract = false;
+		il = range.min(); ir = range.max();
+	}
+	
+	if (chk_step == 0 || chk_step >= (ir - il + 1) / 32) {
+		chk_step = (ir - il + 1) / 32; if (chk_step == 0) chk_step = 1;
+	}
+	
+	if (flag_optimize) {
+		cnt = div_ceil(range_i_last_av.length() + 1, chk_step);
+		sum = cnt * this->last_av;
+	}
+	
+	if (flag_add) {
+		float* p = this->item_addr(il);
+		for (unsigned int i = il; i <= ir; i += chk_step) {
+			sum += *p;
+			p += chk_step; if (p > this->bufend) p -= this->bufsize;
+		}
+		cnt += div_ceil(ir - il + 1, chk_step);
+	}
+	if (flag_subtract) {
+		float* p = this->item_addr(sl);
+		for (unsigned int s = sl; s <= sr; s += chk_step) {
+			sum -= *p;
+			p += chk_step; if (p > this->bufend) p -= this->bufsize;
+		}
+		cnt -= div_ceil(sr - sl + 1, chk_step);
+	}
+	
+	float av = sum / cnt;
+	this->last_av = av;
+	this->range_abs_i_last_av = this->range_to_abs(range);
+	
+	this->unlock();
+	return av;
 }
 

@@ -193,7 +193,8 @@ public:
 	bool set_index_unit(float unit); //note: set to interval in ms, s (default), min or h. index values are multiplied by the unit
 	
 	bool set_axis_x_range(AxisRange range); //range.width() + 1 is the amount of data shows in each area
-	bool set_axis_x_range(unsigned int range_width = 0); //equal to AxisRange(0, range_width)
+	bool set_axis_x_range(unsigned int range_width = 0); //equal to AxisRange(0, range_width) except in goto-end mode
+	bool set_axis_x_range(unsigned int min, unsigned int max); //equal to AxisRange(min, max)
 	bool set_axis_y_range(unsigned int index, AxisRange range); //useless when option_auto_set_range_y is set
 	bool set_axis_y_range_length_min(unsigned int index, float length_min); //minimum range length of y-axis range in auto-set mode
 	
@@ -209,6 +210,8 @@ public:
 	void set_option_show_axis_x_values(bool set); //only that of the bottommost is shown. default: true
 	void set_option_axis_x_int_values(bool set); //don't show decimal digits for x-axis values. default: false
 	void set_option_show_axis_y_values(bool set); //shown in left border of each area. default: true
+	
+	void set_option_show_average_line(unsigned int index, bool set); //this requires extra calculation, though it was optimized
 	
 	void set_option_anti_alias(bool set); //font of x-axis, y-axis values are not influenced. default: false
 };
@@ -307,6 +310,11 @@ inline bool Recorder::set_axis_x_range(unsigned int range_width)
 	if (this->flag_goto_end && range_width < this->data_range().max())
 		range.max_move_to(this->data_range().max());
 	return this->set_axis_x_range(range);
+}
+
+inline bool Recorder::set_axis_x_range(unsigned int min, unsigned int max)
+{
+	return this->set_axis_x_range(AxisRange(min, max));
 }
 
 // private

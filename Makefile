@@ -3,14 +3,11 @@ CPPFLAGS = -O3 -flto
 
 includedir = $(prefix)/include
 includedir_subdir = $(includedir)/simple-cairo-plot
-headers = $(foreach h, $(wildcard *.h), $(includedir_subdir)/$(h))
-
-cpp_options = -I$(includedir) `pkg-config gtkmm-3.0 --cflags --libs` $(CPPFLAGS)
-objects = circularbuffer.o plottingarea.o recorder.o frontend.o
 
 libdir = $(prefix)/lib
 target = $(libdir)/libsimple-cairo-plot.a
 
+# use gcc-ar for LTO support
 AR = gcc-ar
 ifeq '$(findstring ;,$(PATH))' ';'
 # Windows (neither MSYS2 nor Cygwin)
@@ -27,8 +24,12 @@ RMDIR = rm -f -r
 target_demo = plot_demo
 endif
 
+cpp_options = -I$(includedir) `pkg-config gtkmm-3.0 --cflags --libs` $(CPPFLAGS)
+headers = $(foreach h, $(wildcard *.h), $(includedir_subdir)/$(h))
+objects = circularbuffer.o plottingarea.o recorder.o frontend.o
+
 $(target): $(headers) $(objects) $(libdir)
-	$(AR) rcs $(libdir)/libsimple-cairo-plot.a $(objects)
+	$(AR) rcs $@ $(objects)
 
 $(target_demo): demo.cpp $(target)
 	$(CXX) $< -L$(libdir) -lsimple-cairo-plot $(cpp_options) -o $@
