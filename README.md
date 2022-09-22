@@ -2,7 +2,7 @@
 An easy-to-use component for continuous recording and plotting of variables. it depends on `gtkmm-3.0`, and is implemented with Cairo.
 
 ## Demo
-Packages needed: `gcc`, `make`, `git`(optional), `libgtkmm-3.0-dev`.
+Packages required: `gcc`, `make`, `git`(optional), `libgtkmm-3.0-dev`.
 ```
 git clone https://github.com/wuwbobo2021/simple-cairo-plot
 cd simple-cairo-plot
@@ -27,14 +27,14 @@ For 32-bit Windows:
 
 `CircularBuffer`: Where the data should be pushed back to update the graph in `PlottingArea`. After it becomes full, it discards an item each time a new item is pushed into, but it avoids moving every item in the memory region. Optimized algorithms calculating min/max/average values are implemented here, and spike detection is enabled by default so that spikes can be treated specially to avoid flickering of spikes when the x-axis index step for data plotting is adjusted for a wide index range. It is thread-safe, and most of its simple functions are inlined.
 
-`PlottingArea`: Implements a graph box for a single buffer without scroll box. It only supports a single variable, and values should be pushed into its buffer manually. Axis ranges can be set either automatically or manually, and the grid with tick values can be either fixed or auto-adjusted. For x-axis index range, there are goto-end mode and extend mode.
+`PlottingArea`: Implements a graph box for a single buffer without scroll box. It only supports a single variable, and values should be pushed into its buffer manually. Axis ranges can be set either automatically or manually, and the grid with tick values can be either fixed or auto-adjusted. For x-axis index range, goto-end mode and extend mode are available.
 
 `VariableAccessPtr`: Pointer of an variable or a function which has a `void*` parameter and returns a `float` value. Pointer of a member function of class `T` which returns a `float` value and has no extra parameters can be created by:
 ```
 MemberFuncPtr<typename T, float (T::*F)()>(T* pobj)
 ```
 
-`Recorder`: Packs multiple plotting areas and a scroll box for axis-x. It accepts a group of `VariableAccessPtr` pointers from which the data is read, then creates multiple buffers multiple plotting areas for these variables. After it is started, it reads and pushs the data into the buffers in given interval, and the unit of axis-x values is set to seconds. Provides zoom in/out (by left/right mouse button clicking on it) and CSV file opening/saving features.
+`Recorder`: Packs multiple plotting areas and a scroll box for x-axis. It accepts a group of `VariableAccessPtr` pointers from which the data is read, then creates multiple buffers multiple plotting areas for these variables. After it is started, it reads and pushs the data into the buffers in given interval, and the unit of axis-x values is set to seconds. Provides zoom in/out (by left/right mouse button clicking on it) and CSV file opening/saving features.
 
 `Frontend`: Provides a simple interface to create a Gtk application and a window for the recorder. It runs in a seperate thread for Gtk, until it is destructed or its member function `close()` is being called. Call its member function `run()` to join the Gtk thread, then it will run until the window is closed. Notice: Through function `recorder()` you can get a reference of the `Recorder` object as a Gtk Widget after the window is opened, but the object itself will be destructed when the window is being closed.
 
