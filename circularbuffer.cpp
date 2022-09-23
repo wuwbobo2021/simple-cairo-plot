@@ -121,7 +121,7 @@ void CircularBuffer::clear(bool clear_count_history)
 	
 	this->cnt = 0;
 	if (clear_count_history)
-		this->cnt_overall = 0;
+		this->cnt_overwrite = 0;
 	this->end = this->buf;
 	this->buf[0] = 0;
 	
@@ -129,8 +129,8 @@ void CircularBuffer::clear(bool clear_count_history)
 	this->buf_spike_end = this->buf_spike;
 	this->spike_check_av = 0;
 	
-	this->range_abs_i_last_scan.set(-1, -1);
-	this->range_abs_i_last_av.set(-1, -1);
+	this->last_min_max_scan = MinMaxScanInfo();
+	this->last_av_calc = AvCalcInfo();
 	
 	this->unlock();
 }
@@ -175,13 +175,14 @@ unsigned int CircularBuffer::get_spikes(Range range, unsigned int* buf_out)
 	range = this->range().cut_range(range);
 	range = this->range_to_abs(range);
 	
-	unsigned int cnt_sp = 0; unsigned long int cur;
+	unsigned int cnt_sp = 0;
+	unsigned int* p = buf_out; unsigned long int cur;
 	for (unsigned int i = 0; i < this->buf_spike_cnt; i++) {
 		cur = this->buf_spike_item(i);
 		if (cur < range.min()) continue;
 		if (cur > range.max()) break;
-		*buf_out = this->buf_spike_item(i) - this->count_overwritten();
-		cnt_sp++; buf_out++;
+		*p = this->index_to_rel(this->buf_spike_item(i));
+		cnt_sp++; p++;
 	}
 	
 	this->unlock();
@@ -214,55 +215,60 @@ Range CircularBuffer::get_value_range(Range range, unsigned int chk_step)
 	using std::numeric_limits;
 	
 	if (this->cnt == 0) return Range(0, 0);
+	
+	// indexes used during the calculation are "absolute"
 	range = this->range().cut_range(range);
+	range = this->range_to_abs(range);
 	if (chk_step == 0 || chk_step >= this->cnt / 2) chk_step = 1;
 	
-	Range range_i_last_scan = this->range_to_rel(this->range_abs_i_last_scan),
-	      range_i_min_max_last_scan = this->range_to_rel(this->range_abs_i_min_max_last_scan);
-	
-	if (range_i_last_scan.contain(range) && range.contain(range_i_min_max_last_scan))
-		return this->range_min_max_last_scan;
+	MinMaxScanInfo last = this->last_min_max_scan;
+	if (last.range_i_min_max_scan.contain(range) && range.contain(last.range_i_min_max))
+		return last.range_min_max;
 	
 	this->lock();
 	
-	unsigned int il = range.min(), ir = range.max();
+	unsigned long int il = range.min(), ir = range.max();
+	unsigned long int imin = il, imax = il;
+	float min = numeric_limits<float>::max(), max = numeric_limits<float>::lowest();
 	
-	unsigned int imin = il, imax = il;
-	float cur, min = numeric_limits<float>::max(), max = numeric_limits<float>::lowest();
-	
-	if (range_i_last_scan.contain(range.min()) && range.contain(range_i_last_scan.max())
-	&&  range.contain(range_i_min_max_last_scan))
+	// optimized for scrolling right, but not for scrolling left
+	if (last.range_i_min_max_scan.contain(range.min())
+	&&  range.contain(last.range_i_min_max_scan.max())
+	&&  range.contain(last.range_i_min_max))
 	{
-		imin = range_i_min_max_last_scan.min(); min = this->range_min_max_last_scan.min();
-		imax = range_i_min_max_last_scan.max(); max = this->range_min_max_last_scan.max();
-		il = range_i_last_scan.max();
+		imin = last.range_i_min_max.min(); min = last.range_min_max.min();
+		imax = last.range_i_min_max.max(); max = last.range_min_max.max();
+		il = last.range_i_min_max_scan.max();
 	}
 	
-	float* p = this->item_addr(il);
-	for (unsigned int i = il; i <= ir; i += chk_step) {
-		cur = *p;
-		if (cur < min) {min = cur; imin = i;}
-		if (cur > max) {max = cur; imax = i;}
-		p += chk_step; if (p > this->bufend) p -= this->bufsize;
-	}
-	
+	// check for spikes
+	unsigned long int i; float cur;
 	if (chk_step > 1 && this->buf_spike_cnt > 0) {
-		for (unsigned int i_sp = 0, i; i_sp < this->buf_spike_cnt; i_sp++) {
-			i = this->buf_spike_item(i_sp) - this->count_overwritten();
+		for (unsigned int i_sp = 0; i_sp < this->buf_spike_cnt; i_sp++) {
+			i = this->buf_spike_item(i_sp);
 			if (i < il) continue; if (i > ir) break;
-			cur = (*this)[i];
+			cur = this->abs_index_item(i);
 			if (cur < min) {min = cur; imin = i;}
 			if (cur > max) {max = cur; imax = i;}
 		}
 	}
 	
-	Range range_min_max = Range(min, max);
-	this->range_min_max_last_scan = range_min_max;
-	this->range_abs_i_last_scan = this->range_to_abs(range);
-	this->range_abs_i_min_max_last_scan = this->range_to_abs(Range(imin, imax));
-	
+	float* p = this->item_addr(il);
 	this->unlock();
-	return range_min_max;
+	
+	for (i = il; i <= ir; i += chk_step) {
+		cur = *p;
+		if (cur < min) {min = cur; imin = i;}
+		if (cur > max) {max = cur; imax = i;}
+		p = this->ptr_inc(p, chk_step);
+	}
+	
+	last.range_i_min_max_scan = range;
+	last.range_i_min_max.set(imin, imax);
+	last.range_min_max.set(min, max);
+	
+	this->last_min_max_scan = last;
+	return last.range_min_max;
 }
 
 inline unsigned int div_ceil(unsigned int dividend, unsigned int divisor)
@@ -274,69 +280,86 @@ inline unsigned int div_ceil(unsigned int dividend, unsigned int divisor)
 float CircularBuffer::get_average(Range range, unsigned int chk_step)
 {
 	if (this->cnt == 0) return 0;
-	range = this->range().cut_range(range);
 	
-	Range range_i_last_av = this->range_to_rel(this->range_abs_i_last_av);
-	if (range == range_i_last_av) return this->last_av;
+	// indexes used during the calculation are "absolute"
+	range = this->range().cut_range(range);
+	range = this->range_to_abs(range);
+	
+	AvCalcInfo last = this->last_av_calc;
+	if (range == last.range_i_av_val)
+		return last.av_val;
 	
 	this->lock();
 	
 	bool flag_optimize = false, flag_add, flag_subtract;
-	unsigned int il, ir, sl, sr; //index bounds
+	unsigned long int il_add, ir_add, il_sub, ir_sub; //index bounds
 	unsigned int cnt = 0; float sum = 0;
 	
-	if (range_i_last_av.contain(range.min()) && range.contain(range_i_last_av.max())) {
-		flag_add      = (range.max() > range_i_last_av.max());
-		flag_subtract = (range.min() > range_i_last_av.min());
+	// optimized for scrolling right, but not for scrolling left
+	if (last.range_i_av_val.min() > this->cnt_overwrite
+	&&  last.range_i_av_val.contain(range.min())
+	&&  range.contain(last.range_i_av_val.max()))
+	{
+		flag_add      = (range.max() > last.range_i_av_val.max());
+		flag_subtract = (range.min() > last.range_i_av_val.min());
 		
 		unsigned int cnt_operate = 0;
 		if (flag_add) {
-			il = range_i_last_av.max() + 1; ir = range.max();
-			cnt_operate += ir - il + 1;
+			il_add = last.range_i_av_val.max() + 1; ir_add = range.max();
+			cnt_operate += ir_add - il_add + 1;
 		}
 		if (flag_subtract) {
-			sl = range_i_last_av.min(); sr = range.min() - 1;
-			cnt_operate += sr - sl + 1;
+			il_sub = last.range_i_av_val.min(); ir_sub = range.min() - 1;
+			cnt_operate += ir_sub - il_sub + 1;
 		}
 		flag_optimize = (cnt_operate < range.length());
 	}
 	
 	if (! flag_optimize) {
 		flag_add = true; flag_subtract = false;
-		il = range.min(); ir = range.max();
+		il_add = range.min(); ir_add = range.max();
 	}
 	
-	if (chk_step == 0 || chk_step >= (ir - il + 1) / 32) {
-		chk_step = (ir - il + 1) / 32; if (chk_step == 0) chk_step = 1;
+	if (chk_step == 0 || chk_step >= (ir_add - il_add + 1) / 32) {
+		chk_step = (ir_add - il_add + 1) / 32; if (chk_step == 0) chk_step = 1;
 	}
 	
 	if (flag_optimize) {
-		cnt = div_ceil(range_i_last_av.length() + 1, chk_step);
-		sum = cnt * this->last_av;
+		cnt = div_ceil(last.range_i_av_val.length() + 1, chk_step);
+		sum = cnt * last.av_val;
 	}
 	
+	float* p_add, * p_sub, * p_add_end, * p_sub_end;
 	if (flag_add) {
-		float* p = this->item_addr(il);
-		for (unsigned int i = il; i <= ir; i += chk_step) {
-			sum += *p;
-			p += chk_step; if (p > this->bufend) p -= this->bufsize;
-		}
-		cnt += div_ceil(ir - il + 1, chk_step);
+		unsigned int add_cnt = div_ceil(ir_add - il_add + 1, chk_step);
+		cnt += add_cnt;
+		p_add = this->item_addr(il_add);
+		p_add_end = this->ptr_inc(p_add, (add_cnt - 1)*chk_step);
 	}
 	if (flag_subtract) {
-		float* p = this->item_addr(sl);
-		for (unsigned int s = sl; s <= sr; s += chk_step) {
-			sum -= *p;
-			p += chk_step; if (p > this->bufend) p -= this->bufsize;
-		}
-		cnt -= div_ceil(sr - sl + 1, chk_step);
+		unsigned int sub_cnt = div_ceil(ir_sub - il_sub + 1, chk_step);
+		cnt -= sub_cnt;
+		p_sub = this->item_addr(il_sub);
+		p_sub_end = this->ptr_inc(p_sub, (sub_cnt - 1)*chk_step);
 	}
 	
-	float av = sum / cnt;
-	this->last_av = av;
-	this->range_abs_i_last_av = this->range_to_abs(range);
-	
 	this->unlock();
-	return av;
+	
+	if (flag_subtract) while (true) {
+		sum -= *p_sub;
+		if (p_sub == p_sub_end) break;
+		p_sub = this->ptr_inc(p_sub, chk_step);
+	}
+	if (flag_add) while (true) {
+		sum += *p_add;
+		if (p_add == p_add_end) break;
+		p_add = this->ptr_inc(p_add, chk_step);
+	}
+	
+	last.av_val = sum / cnt;
+	last.range_i_av_val = range;
+	
+	this->last_av_calc = last;
+	return last.av_val;
 }
 

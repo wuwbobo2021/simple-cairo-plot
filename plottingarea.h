@@ -34,7 +34,7 @@ class PlottingArea: public Gtk::DrawingArea
 	float axis_y_length_min = 0; //minimum range length of y-axis range in auto-set mode
 	
 	Gdk::RGBA color_grid, color_text; //auto set in PlottingArea::on_style_updated()
-	const std::vector<double> dash_pattern = {10, 2, 1, 2}; //for drawing average line
+	const std::vector<double> dash_pattern = {10, 2, 2, 2}; //for drawing average line
 	
 	// used for auto-refresh mode
 	std::thread* thread_timer;

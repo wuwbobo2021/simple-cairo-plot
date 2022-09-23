@@ -356,8 +356,7 @@ Gtk::Allocation PlottingArea::draw_grid(const Cairo::RefPtr<Cairo::Context>& cr)
 				cr->move_to(0, gy_cur);
 				if (i < axis_y_values.count() - 1 || this->axis_y_unit_name.length() == 0)
 					cr->show_text(float_to_str(val, this->oss));
-				else {
-					// print topmost value with axis y unit name
+				else { // print topmost value with axis y unit name added
 					gy_cur -= 2; cr->move_to(0, gy_cur);
 					cr->show_text(float_to_str(val, this->oss) + '(' + this->axis_y_unit_name + ')');
 				}
@@ -385,14 +384,15 @@ void PlottingArea::plot(const Cairo::RefPtr<Cairo::Context>& cr, Gtk::Allocation
 	AxisRange alloc_y(alloc.get_y(), alloc.get_y() + alloc.get_height());
 	float w_cur = alloc.get_x(),
 	      w_unit = alloc.get_width() * this->index_step / this->range_x.length();
-	float val_first = (*this->source)[this->range_x.min()];
+	float val_first = this->source->item(this->range_x.min());
 	cr->move_to(w_cur, this->range_y.map_reverse(val_first, alloc_y));
 	
-	for (unsigned int i  = this->range_x.min() + 1;
-	                  i <= this->range_x.max() + 1 && i < this->source->count();
+	AxisRange range_x_abs = this->source->range_to_abs(this->range_x);
+	for (unsigned int i  = range_x_abs.min() + 1;
+	                  i <= range_x_abs.max() + 1 && i < this->source->count_overall();
 	                  i += this->index_step) {
 		w_cur += w_unit;
-		cr->line_to(w_cur, this->range_y.map_reverse((*this->source)[i], alloc_y));
+		cr->line_to(w_cur, this->range_y.map_reverse(this->source->abs_index_item(i), alloc_y));
 	}
 	
 	// draw spikes seperately when index_step > 1
@@ -402,12 +402,11 @@ void PlottingArea::plot(const Cairo::RefPtr<Cairo::Context>& cr, Gtk::Allocation
 		unsigned int cnt_sp = this->source->get_spikes(this->range_x, this->buf_spike);
 		
 		for (unsigned int i_sp = 0, i; i_sp < cnt_sp; i_sp++) {
-			i = this->buf_spike[i_sp] - this->source->count_overwritten();
-			if (i + 1 >= this->source->count()) break;
+			i = this->source->index_to_rel(this->buf_spike[i_sp]);
 			w_cur = this->range_x.map(i, alloc_x);
-			cr->move_to(w_cur, this->range_y.map_reverse((*this->source)[i], alloc_y));
+			cr->move_to(w_cur, this->range_y.map_reverse(this->source->item(i), alloc_y));
 			w_cur += w_unit;
-			cr->line_to(w_cur, this->range_y.map_reverse((*this->source)[i + 1], alloc_y));
+			cr->line_to(w_cur, this->range_y.map_reverse(this->source->item(i + 1), alloc_y));
 		}
 	}
 	

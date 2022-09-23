@@ -6,6 +6,7 @@ includedir_subdir = $(includedir)/simple-cairo-plot
 
 libdir = $(prefix)/lib
 target = $(libdir)/libsimple-cairo-plot.a
+target_demo = plot_demo.exe
 
 # use gcc-ar for LTO support
 AR = gcc-ar
@@ -15,16 +16,14 @@ MKDIR = mkdir
 CP = copy
 RM = del /Q
 RMDIR = rmdir /S /Q
-target_demo = plot_demo.exe
 else
 MKDIR = mkdir -p
 CP = cp
 RM = rm -f
 RMDIR = rm -f -r
-target_demo = plot_demo
 endif
 
-cpp_options = -I$(includedir) `pkg-config gtkmm-3.0 --cflags --libs` $(CPPFLAGS)
+cpp_options = -I$(includedir) `pkg-config gtkmm-3.0 --cflags --libs` -latomic $(CPPFLAGS)
 headers = $(foreach h, $(wildcard *.h), $(includedir_subdir)/$(h))
 objects = circularbuffer.o plottingarea.o recorder.o frontend.o
 
