@@ -148,22 +148,35 @@ void CircularBuffer::erase()
 
 void CircularBuffer::load(const float* data, unsigned int cnt, bool spike_check)
 {
-	if (cnt == 0) return;
+	if (data == NULL || cnt == 0) return;
 	this->lock(true);
 	
-	const float* p;
+	const float* pf, * pf_end;
 	if (cnt <= this->bufsize)
-		p = data;
+		pf = data;
 	else
-		p = data + cnt - this->bufsize;
+		pf = data + cnt - this->bufsize;
+	pf_end = data + cnt - 1;
 	
 	if (spike_check) {
-		for (const float* pt = p; pt < p + cnt; pt++)
-			this->push(*pt, true);
+		for (pf; pf <= pf_end; pf++)
+			this->push(*pf, true, false);
+		if (cnt > this->bufsize)
+			this->cnt_overwrite += cnt - this->bufsize;
 	} else {
-		for (const float* pt = p; pt < p + cnt; pt++)
-			this->push(*pt, false);
+		float* p = this->end;
+		for (pf; pf <= pf_end; pf++) {
+			*p = *pf;
+			p = this->ptr_inc(p);
+		}
+		unsigned long int tmp_cnt = this->cnt + cnt;
+		if (tmp_cnt > this->bufsize) {
+			this->cnt_overwrite += tmp_cnt - this->bufsize;
+			this->cnt = this->bufsize;
+		} else
+			this->cnt = tmp_cnt;
 	}
+	
 	this->unlock();
 }
 
@@ -332,15 +345,15 @@ float CircularBuffer::get_average(Range range, unsigned int chk_step)
 	float* p_add, * p_sub, * p_add_end, * p_sub_end;
 	if (flag_add) {
 		unsigned int add_cnt = div_ceil(ir_add - il_add + 1, chk_step);
-		cnt += add_cnt;
 		p_add = this->item_addr(il_add);
 		p_add_end = this->ptr_inc(p_add, (add_cnt - 1)*chk_step);
+		cnt += add_cnt;
 	}
 	if (flag_subtract) {
 		unsigned int sub_cnt = div_ceil(ir_sub - il_sub + 1, chk_step);
-		cnt -= sub_cnt;
 		p_sub = this->item_addr(il_sub);
 		p_sub_end = this->ptr_inc(p_sub, (sub_cnt - 1)*chk_step);
+		cnt -= sub_cnt;
 	}
 	
 	this->unlock();

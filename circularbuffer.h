@@ -25,7 +25,7 @@ namespace SimpleCairoPlot
 class CircularBuffer
 {	
 	float* buf = NULL; float* bufend = NULL;
-	float* end = NULL;
+	float* end = NULL; //points to where the next item should be stored in
 	unsigned int bufsize = 0, cnt = 0;
 	volatile unsigned long int cnt_overwrite = 0;
 	
@@ -54,7 +54,7 @@ class CircularBuffer
 	std::atomic_int read_lock_counter; //atomic_int is not implemented with mutex on most platforms
 	
 	void copy_from(const CircularBuffer& from);
-	float* ptr_inc(float* p, unsigned int inc) const;
+	float* ptr_inc(float* p, unsigned int inc = 1) const;
 	float* item_addr(unsigned int i) const;
 	unsigned long int buf_spike_item(unsigned int i) const;
 	void buf_spike_push(unsigned long int val);
@@ -91,7 +91,7 @@ public:
 	// locks for writing
 	void clear(bool clear_history_count = false);
 	void erase();
-	void push(float val, bool spike_check = true);
+	void push(float val, bool spike_check = true, bool lock = true);
 	void load(const float* data, unsigned int cnt, bool spike_check = true);
 	
 	// get_spikes() locks for reading
@@ -212,25 +212,23 @@ inline float& CircularBuffer::last_item() const
 	return this->item(this->cnt - 1);
 }
 
-inline void CircularBuffer::push(float val, bool spike_check)
+inline void CircularBuffer::push(float val, bool spike_check, bool lock)
 {
 	if (! this->buf) return;
-	this->lock(true);
+	if (lock) this->lock(true);
 	
 	*this->end = val;
+	this->end = this->ptr_inc(this->end);
+	
 	if (this->cnt < this->bufsize)
 		this->cnt++;
 	else
 		this->cnt_overwrite++;
 	
-	this->end++;
-	if (this->end > this->bufend)
-		this->end = this->buf;
-	
 	if (spike_check)
 		this->spike_check();
 	
-	this->unlock();
+	if (lock) this->unlock();
 }
 
 inline void CircularBuffer::set_spike_check_ref_min(float val)
