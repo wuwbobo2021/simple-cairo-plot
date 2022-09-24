@@ -512,7 +512,7 @@ void Recorder::refresh_loop()
 	if (this->redraw_interval > 200) check_time_interval = 200;
 	check_time_interval *= 1000; //us
 	
-	this->set_axis_x_range();
+	this->refresh_view();
 	steady_clock::time_point t_last_refresh = steady_clock::now();
 	
 	while (this->flag_recording) {		

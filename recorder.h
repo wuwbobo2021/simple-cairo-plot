@@ -187,6 +187,8 @@ public:
 	bool open_csv(const std::string& file_path); //note: comments will not be loaded
 	bool save_csv(const std::string& file_path, const std::string& str_comment = Empty_Comment); //note: comment is unstandard
 	
+	void refresh_view(); //call this function if data has been loaded into the buffers manually
+	
 	bool set_interval(float new_interval); //interval of reading current values (ms). it sets index unit (multipier) to interval (s)
 	bool set_redraw_interval(unsigned int new_redraw_interval); //set manually if a slower redraw rate is required to reduce CPU usage
 	
@@ -215,6 +217,8 @@ public:
 	
 	void set_option_anti_alias(bool set); //font of x-axis, y-axis values are not influenced. default: false
 };
+
+using RecordView = Recorder;
 
 inline bool Recorder::is_recording() const
 {
@@ -302,6 +306,11 @@ inline AxisRange Recorder::axis_y_range(unsigned int index) const
 {
 	if (index > this->var_cnt - 1) return AxisRange(0, 0);
 	return this->areas[index].get_range_y();
+}
+
+inline void Recorder::refresh_view()
+{
+	this->set_axis_x_range();
 }
 
 inline bool Recorder::set_axis_x_range(unsigned int range_width)
