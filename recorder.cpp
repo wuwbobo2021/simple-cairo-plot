@@ -379,7 +379,7 @@ bool Recorder::set_axis_x_range(AxisRange range)
 	
 	this->refresh_areas(true, true);
 	
-	this->flag_refresh_scroll = true;
+	this->flag_refresh_scroll = true; //tells refresh_indicators() that the scroll needs to be updated
 	this->dispatcher_refresh_indicators.emit();
 	return true;
 }
@@ -541,13 +541,15 @@ void Recorder::refresh_indicators() //not thread-safe
 	unsigned int val, upper = this->data_range().max();
 	
 	if (this->flag_goto_end && !flag_extend && range_x.max() < upper)
-		val = upper - range_x.length(); //false update, not limited by redraw_interval
+		val = upper - range_x.length(); //merely updates the scrollbar, not limited by redraw_interval
 	else
 		val = range_x.min();
 	
+	// tell on_scroll() don't refresh areas again if the range has been moved by PlottingArea
 	this->flag_refresh_scroll = true;
 	adj->configure(val, 0, upper, 1, range_x.length() / 2, range_x.length());
 	this->flag_refresh_scroll = false;
+	
 	this->scrollbar.set_visible(val > 0 || adj->get_page_size() < adj->get_upper());
 }
 

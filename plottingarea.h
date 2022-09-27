@@ -9,6 +9,7 @@
 #include <thread>
 
 #include <gdkmm/color.h>
+#include <cairo.h>
 #include <cairomm/context.h>
 #include <glibmm/dispatcher.h>
 #include <gtkmm/drawingarea.h>
@@ -24,6 +25,7 @@ class PlottingArea: public Gtk::DrawingArea
 {
 	CircularBuffer* source = NULL; //data source
 	unsigned long int* buf_spike = NULL;
+	cairo_path_data_t* buf_cairo = NULL; unsigned int i_buf_cairo = 0;
 	
 	// range of indexes in the buffer and y-axis values that are covered by the area
 	AxisRange range_x = AxisRange(0, 100), range_y = AxisRange(0, 10);
@@ -34,13 +36,13 @@ class PlottingArea: public Gtk::DrawingArea
 	float axis_y_length_min = 0; //minimum range length of y-axis range in auto-set mode
 	
 	Gdk::RGBA color_grid, color_text; //auto set in PlottingArea::on_style_updated()
-	const std::vector<double> dash_pattern = {10, 2, 2, 2}; //for drawing average line
+	const std::vector<double> dash_pattern = {10, 2, 2, 2}; //used for drawing average line
 	
 	// used for auto-refresh mode
 	std::thread* thread_timer;
 	Glib::Dispatcher dispatcher; //used for thread safety
 	bool flag_auto_refresh = false;
-	unsigned int refresh_interval = 40; //25 Hz
+	unsigned int refresh_interval = 20; //50 Hz
 	
 	std::ostringstream oss; //used for printing value labels for the grid
 	
@@ -49,7 +51,6 @@ class PlottingArea: public Gtk::DrawingArea
 	volatile bool flag_check_range_y = false, flag_adapt = false;
 	
 	void refresh_loop();
-	void refresh_callback();
 	
 	// inherits Gtk::Widget, implements drawing procedures
 	void on_style_updated() override;
@@ -59,6 +60,9 @@ class PlottingArea: public Gtk::DrawingArea
 	Gtk::Allocation draw_grid(const Cairo::RefPtr<Cairo::Context>& cr);
 	void plot(const Cairo::RefPtr<Cairo::Context>& cr, Gtk::Allocation alloc);
 	void draw_average_line(const Cairo::RefPtr<Cairo::Context>& cr, Gtk::Allocation alloc);
+	
+	void buf_cr_add(float x, float y, bool move_to = false);
+	void buf_cr_clear();
 	
 public:
 	enum {Border_X_Left = 50, Border_Y = 12};
@@ -109,6 +113,23 @@ inline AxisRange PlottingArea::get_range_x() const
 inline AxisRange PlottingArea::get_range_y() const
 {
 	return this->range_y;
+}
+
+// private
+
+inline void PlottingArea::buf_cr_add(float x, float y, bool move_to)
+{
+	buf_cairo[i_buf_cairo].header.type = (move_to? CAIRO_PATH_MOVE_TO : CAIRO_PATH_LINE_TO);
+	buf_cairo[i_buf_cairo].header.length = 2;
+	i_buf_cairo++;
+	buf_cairo[i_buf_cairo].point.x = x;
+	buf_cairo[i_buf_cairo].point.y = y;
+	i_buf_cairo++;
+}
+
+inline void PlottingArea::buf_cr_clear()
+{
+	i_buf_cairo = 0;
 }
 
 }

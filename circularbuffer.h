@@ -92,7 +92,7 @@ public:
 	void clear(bool clear_history_count = false);
 	void erase();
 	void push(float val, bool spike_check = true, bool lock = true);
-	void load(const float* data, unsigned int cnt, bool spike_check = true);
+	void load(const float* data, unsigned int cnt, bool spike_check = true); //optimized without spike check
 	
 	// get_spikes() locks for reading
 	void set_spike_check_ref_min(float val);
@@ -192,7 +192,7 @@ inline Range CircularBuffer::range_to_rel(Range range_abs) const
 inline float& CircularBuffer::item(unsigned int i) const
 {
 	if (i >= this->bufsize)
-		throw std::out_of_range("CircularBuffer::operator[](): index exceeds the buffer size.");
+		throw std::out_of_range("CircularBuffer::item(): index exceeds the buffer size.");
 	
 	return *(this->item_addr(i));
 }
@@ -261,7 +261,7 @@ inline void CircularBuffer::lock(bool for_writing)
 	// read operation must wait for previous write operation.
 	if (this->flag_lock.test_and_set(std::memory_order_acquire)
 	&& (for_writing || this->read_lock_counter == 0)) {
-		unsigned char i = 0;
+		unsigned char i = 0; //faster than using int
 		while (this->flag_lock.test_and_set(std::memory_order_acquire)) {
 			sleep_for(microseconds((int) pow(2, i))); if (i < 12) i++;
 		}
@@ -296,7 +296,7 @@ inline float* CircularBuffer::ptr_inc(float* p, unsigned int inc) const
 
 inline float* CircularBuffer::item_addr(unsigned int i) const
 {
-	if (this->cnt < this->bufsize)
+	if (! this->is_full())
 		return this->ptr_inc(this->buf, i);
 	else
 		return this->ptr_inc(this->end, i);

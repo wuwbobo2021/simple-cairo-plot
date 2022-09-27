@@ -2,9 +2,9 @@
 // If you have found bugs in this program, please pull an issue, or contact me.
 // Licensed under LGPL version 2.1.
 
-#include <simple-cairo-plot/plottingarea.h>
-
 #include <chrono>
+
+#include <simple-cairo-plot/plottingarea.h>
 
 using namespace SimpleCairoPlot;
 
@@ -26,20 +26,24 @@ void PlottingArea::init(CircularBuffer* buf)
 	bool except_caught = false;
 	try {
 		this->buf_spike = new unsigned long int[this->source->spike_buffer_size()];
+		this->buf_cairo = new cairo_path_data_t[2*(this->source->size() + this->source->spike_buffer_size())];
 	} catch (std::bad_alloc) {
 		except_caught = true;
 	}
-	if (except_caught || this->buf_spike == NULL)
+	if (except_caught || this->buf_spike == NULL || this->buf_cairo == NULL) {
+		if (this->buf_spike) {delete this->buf_spike; this->buf_spike = NULL;}
 		throw std::bad_alloc();
+	}
 	
 	this->dispatcher.connect(sigc::mem_fun(*(Gtk::Widget*)this, &Gtk::Widget::queue_draw));
+	
 	this->color_plot.set_rgba(1.0, 0.0, 0.0); //red
 	this->oss.setf(std::ios::fixed);
 }
 
 PlottingArea::~PlottingArea()
 {
-	this->set_refresh_mode(false);
+	this->set_refresh_mode(false); //make sure the thread is ended
 }
 
 bool PlottingArea::set_refresh_mode(bool auto_refresh, unsigned int interval)
@@ -47,11 +51,14 @@ bool PlottingArea::set_refresh_mode(bool auto_refresh, unsigned int interval)
 	if (this->source == NULL && auto_refresh)
 		throw std::runtime_error("PlottingArea::set_refresh_mode(): pointer of source data buffer is not set.");
 	
+	if (interval > 0) {
+		if (interval < 20) interval = 20; //maximum graph refresh rate: 50 Hz
+		this->refresh_interval = interval;
+	}
+	
 	if (auto_refresh == this->flag_auto_refresh) return true;
 	this->flag_auto_refresh = auto_refresh;
-	
 	if (auto_refresh) {
-		if (interval > 0) this->refresh_interval = interval;
 		try {
 			this->thread_timer = new std::thread(&PlottingArea::refresh_loop, this);
 			return true;
@@ -219,7 +226,7 @@ void PlottingArea::on_style_updated()
 {
 	Gdk::RGBA color_fore = this->get_style_context()->get_color();
 	this->color_text = color_fore;
-	
+
 	if ((color_fore.get_red() + color_fore.get_green() + color_fore.get_blue()) / 3 > 0.5) //dark background
 		this->color_grid.set_rgba(0.4, 0.4, 0.4); //deep gray
 	else //light background
@@ -373,26 +380,23 @@ void PlottingArea::plot(const Cairo::RefPtr<Cairo::Context>& cr, Gtk::Allocation
 {
 	if (alloc.has_zero_area()) return;
 	if (this->source->count() < 2) return;
-	
-	cr->set_line_width(1.0);
-	set_cr_color(cr, this->color_plot);
-	if (this->option_anti_alias)
-		cr->set_antialias(Cairo::ANTIALIAS_GRAY);
-	else
-		cr->set_antialias(Cairo::ANTIALIAS_NONE);
+
+	AxisRange range_x_abs = this->source->range_to_abs(this->range_x);
+	unsigned int i_min = range_x_abs.min(), i_max = range_x_abs.max() + 1;
+	if (i_max >= this->source->count_overall()) i_max--;
 	
 	AxisRange alloc_y(alloc.get_y(), alloc.get_y() + alloc.get_height());
 	float w_cur = alloc.get_x(),
 	      w_unit = alloc.get_width() * this->index_step / this->range_x.length();
-	float val_first = this->source->item(this->range_x.min());
-	cr->move_to(w_cur, this->range_y.map_reverse(val_first, alloc_y));
+	float val_first = this->source->item(this->range_x.min()),
+	      h_cur = this->range_y.map_reverse(val_first, alloc_y);
 	
-	AxisRange range_x_abs = this->source->range_to_abs(this->range_x);
-	for (unsigned int i  = range_x_abs.min() + 1;
-	                  i <= range_x_abs.max() + 1 && i < this->source->count_overall();
-	                  i += this->index_step) {
+	this->buf_cr_clear();
+	this->buf_cr_add(w_cur, h_cur, true); i_min++;
+	for (unsigned int i = i_min; i <= i_max; i += this->index_step) {
 		w_cur += w_unit;
-		cr->line_to(w_cur, this->range_y.map_reverse(this->source->abs_index_item(i), alloc_y));
+		h_cur = this->range_y.map_reverse(this->source->abs_index_item(i), alloc_y);
+		this->buf_cr_add(w_cur, h_cur);
 	}
 	
 	// draw spikes seperately when index_step > 1
@@ -404,12 +408,23 @@ void PlottingArea::plot(const Cairo::RefPtr<Cairo::Context>& cr, Gtk::Allocation
 		for (unsigned int i_sp = 0, i; i_sp < cnt_sp; i_sp++) {
 			i = this->source->index_to_rel(this->buf_spike[i_sp]);
 			w_cur = this->range_x.map(i, alloc_x);
-			cr->move_to(w_cur, this->range_y.map_reverse(this->source->item(i), alloc_y));
+			h_cur = this->range_y.map_reverse(this->source->item(i), alloc_y);
+			this->buf_cr_add(w_cur, h_cur, true);
 			w_cur += w_unit;
-			cr->line_to(w_cur, this->range_y.map_reverse(this->source->item(i + 1), alloc_y));
+			h_cur = this->range_y.map_reverse(this->source->item(i + 1), alloc_y);
+			this->buf_cr_add(w_cur, h_cur);
 		}
 	}
 	
+	cairo_path_t path_info = {CAIRO_STATUS_SUCCESS, this->buf_cairo, (int)this->i_buf_cairo};
+	cairo_append_path(cr->cobj(), &path_info);
+	
+	cr->set_line_width(1.0);
+	set_cr_color(cr, this->color_plot);
+	if (this->option_anti_alias)
+		cr->set_antialias(Cairo::ANTIALIAS_GRAY);
+	else
+		cr->set_antialias(Cairo::ANTIALIAS_NONE);
 	cr->stroke();
 }
 

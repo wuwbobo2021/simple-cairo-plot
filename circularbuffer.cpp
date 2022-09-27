@@ -4,7 +4,8 @@
 
 #include <simple-cairo-plot/circularbuffer.h>
 
-#include <limits>
+#include <cstring> //memcpy()
+#include <limits> //numeric_limits<float>
 
 using namespace SimpleCairoPlot;
 
@@ -55,37 +56,38 @@ CircularBuffer::CircularBuffer(unsigned int sz)
 void CircularBuffer::copy_from(const CircularBuffer& from)
 {
 	this->clear(true);
+	if (from.cnt == 0) return;
+	
 	this->lock(true);
 	
+	unsigned int cnt_cpy = from.cnt; //actual amount of data to be copied
+	if (cnt_cpy > this->bufsize)
+		cnt_cpy = this->bufsize;
+	
+	const float* pf1, * pf2 = NULL; //copy from two segments in from.buf
+	unsigned int cnt_f1, cnt_f2;
+	pf1 = from.item_addr(from.cnt - cnt_cpy);
+	if (pf1 + cnt_cpy - 1 > from.bufend) {
+		cnt_f1 = from.bufend - pf1 + 1;
+		pf2 = from.buf; cnt_f2 = cnt_cpy - cnt_f1;
+	} else
+		cnt_f1 = cnt_cpy;
+	
+	memcpy(this->buf, pf1, cnt_f1*sizeof(float));
+	if (pf2) memcpy(this->buf + cnt_f1, pf2, cnt_f2*sizeof(float));
+	
+	this->cnt = cnt_cpy;
+	this->end = this->ptr_inc(this->buf, cnt_cpy);
+	
+	// copy the spike buffer only when both spike buffers have equal size
 	if (from.bufsize == this->bufsize) {
-		for (unsigned int i = 0; i < this->bufsize; i++)
-			this->buf[i] = from.buf[i];
-		this->cnt = from.cnt;
-		
-		// copy the spike buffer only when both buffers have the same size
+		this->cnt_overwrite = from.cnt_overwrite + (from.cnt - cnt_cpy);
+		memcpy(this->buf_spike, from.buf_spike,
+			   this->buf_spike_size*sizeof(unsigned long int));
 		this->spike_check_ref_min = from.spike_check_ref_min;
-		for (unsigned int i = 0; i < this->buf_spike_size; i++)
-			this->buf_spike[i] = from.buf_spike[i];
 		this->buf_spike_cnt = from.buf_spike_cnt;
-		this->buf_spike_end = this->buf_spike + this->buf_spike_cnt;
-		if (this->buf_spike_end > this->buf_spike_bufend)
-			this->buf_spike_end = this->buf_spike;
+		this->buf_spike_end = from.buf_spike_end;
 	}
-	
-	else if (from.bufsize > this->bufsize) {
-		unsigned int offset = from.bufsize - this->bufsize;
-		for (unsigned int i = 0; i < this->bufsize; i++)
-			this->buf[i] = from[offset + i];
-		this->cnt = this->bufsize;
-	} else { //from.bufsize < this->bufsize
-		for (unsigned int i = 0; i < from.bufsize; i++)
-			this->buf[i] = from[i];
-		this->cnt = from.bufsize;
-	}
-	
-	this->end = this->buf + this->cnt;
-	if (this->end > this->bufend)
-		this->end = this->buf;
 	
 	this->unlock();
 }
@@ -151,24 +153,29 @@ void CircularBuffer::load(const float* data, unsigned int cnt, bool spike_check)
 	if (data == NULL || cnt == 0) return;
 	this->lock(true);
 	
-	const float* pf, * pf_end;
-	if (cnt <= this->bufsize)
-		pf = data;
-	else
-		pf = data + cnt - this->bufsize;
+	unsigned int cnt_load = cnt; //actual amount of data to be read and loaded
+	if (cnt_load > this->bufsize)
+		cnt_load = this->bufsize;
+	
+	const float* pf, * pf_end; //pointer of data to be read
 	pf_end = data + cnt - 1;
+	pf = pf_end - cnt_load + 1;
 	
 	if (spike_check) {
 		for (pf; pf <= pf_end; pf++)
 			this->push(*pf, true, false);
-		if (cnt > this->bufsize)
-			this->cnt_overwrite += cnt - this->bufsize;
+		this->cnt_overwrite += cnt - cnt_load;
 	} else {
-		float* p = this->end;
-		for (pf; pf <= pf_end; pf++) {
-			*p = *pf;
-			p = this->ptr_inc(p);
-		}
+		float* p1 = this->end, * p2 = NULL; //two segments of the current buffer
+		unsigned int cnt1, cnt2;
+		if (p1 + cnt_load - 1 > this->bufend) {
+			cnt1 = this->bufend - p1 + 1;
+			p2 = this->buf; cnt2 = cnt_load - cnt1;
+		} else
+			cnt1 = cnt_load;
+		memcpy(p1, pf, cnt1*sizeof(float));
+		if (p2) memcpy(p2, pf + cnt1, cnt2*sizeof(float));
+		
 		unsigned long int tmp_cnt = this->cnt + cnt;
 		if (tmp_cnt > this->bufsize) {
 			this->cnt_overwrite += tmp_cnt - this->bufsize;
