@@ -28,6 +28,7 @@ public:
 	
 	bool contain(float val) const;
 	bool contain(AxisRange range) const;
+	bool intersected_not_left_of(AxisRange range) const;
 	float fit_value(float val) const;
 	AxisRange cut_range(AxisRange range) const;
 	AxisRange fit_range(AxisRange range) const;
@@ -96,6 +97,11 @@ inline bool AxisRange::contain(float val) const
 inline bool AxisRange::contain(AxisRange range) const
 {
 	return this->val_min <= range.min() && range.max() <= this->val_max;
+}
+
+inline bool AxisRange::intersected_not_left_of(AxisRange range) const
+{
+	return range.contain(this->val_min) && this->contain(range.max());
 }
 
 inline float AxisRange::fit_value(float val) const

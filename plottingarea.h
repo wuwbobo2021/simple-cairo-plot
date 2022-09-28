@@ -25,7 +25,11 @@ class PlottingArea: public Gtk::DrawingArea
 {
 	CircularBuffer* source = NULL; //data source
 	unsigned long int* buf_spike = NULL;
-	cairo_path_data_t* buf_cairo = NULL; unsigned int i_buf_cairo = 0;
+	
+	// used for buffering the cairo path data
+	Range plot_data_amount_max_range = AxisRange(Plot_Data_Amount_Limit_Min, 2048);
+	cairo_path_data_t* buf_cr = NULL; int buf_cr_size, i_buf_cr = 1;
+	cairo_path_data_t* buf_cr_spike = NULL; int buf_cr_spike_size, i_buf_cr_spike = 1;
 	
 	// range of indexes in the buffer and y-axis values that are covered by the area
 	AxisRange range_x = AxisRange(0, 100), range_y = AxisRange(0, 10);
@@ -35,24 +39,24 @@ class PlottingArea: public Gtk::DrawingArea
 	unsigned int axis_x_divider = 5, axis_y_divider = 6; //how many segments the axis should be divided into by the grid
 	float axis_y_length_min = 0; //minimum range length of y-axis range in auto-set mode
 	
+	std::ostringstream oss; //used for printing value labels for the grid
 	Gdk::RGBA color_grid, color_text; //auto set in PlottingArea::on_style_updated()
 	const std::vector<double> dash_pattern = {10, 2, 2, 2}; //used for drawing average line
 	
-	// used for auto-refresh mode
-	std::thread* thread_timer;
-	Glib::Dispatcher dispatcher; //used for thread safety
-	bool flag_auto_refresh = false;
-	unsigned int refresh_interval = 20; //50 Hz
-	
-	std::ostringstream oss; //used for printing value labels for the grid
+	Glib::Dispatcher dispatcher; //used for accepting refresh request from another thread
 	
 	// used for the controlling the interval of range y auto setting
 	unsigned int counter1 = 0, counter2 = 0;
 	volatile bool flag_check_range_y = false, flag_adapt = false;
 	
+	// used for auto-refresh mode
+	std::thread* thread_timer; 
+	bool flag_auto_refresh = false;
+	unsigned int refresh_interval = 20; //50 Hz
+	
 	void refresh_loop();
 	
-	// inherits Gtk::Widget, implements drawing procedures
+	// override event handlers of Gtk::Widget
 	void on_style_updated() override;
 	bool on_draw(const Cairo::RefPtr<Cairo::Context>& cr) override;
 	
@@ -61,7 +65,7 @@ class PlottingArea: public Gtk::DrawingArea
 	void plot(const Cairo::RefPtr<Cairo::Context>& cr, Gtk::Allocation alloc);
 	void draw_average_line(const Cairo::RefPtr<Cairo::Context>& cr, Gtk::Allocation alloc);
 	
-	void buf_cr_add(float x, float y, bool move_to = false);
+	void buf_cr_add(float x, float y, bool spike = false);
 	void buf_cr_clear();
 	
 public:
@@ -117,19 +121,22 @@ inline AxisRange PlottingArea::get_range_y() const
 
 // private
 
-inline void PlottingArea::buf_cr_add(float x, float y, bool move_to)
+inline void PlottingArea::buf_cr_add(float x, float y, bool spike)
 {
-	buf_cairo[i_buf_cairo].header.type = (move_to? CAIRO_PATH_MOVE_TO : CAIRO_PATH_LINE_TO);
-	buf_cairo[i_buf_cairo].header.length = 2;
-	i_buf_cairo++;
-	buf_cairo[i_buf_cairo].point.x = x;
-	buf_cairo[i_buf_cairo].point.y = y;
-	i_buf_cairo++;
+	if (! spike) {
+		buf_cr[i_buf_cr].point.x = x;
+		buf_cr[i_buf_cr].point.y = y;
+		i_buf_cr += 2;
+	} else {
+		buf_cr_spike[i_buf_cr_spike].point.x = x;
+		buf_cr_spike[i_buf_cr_spike].point.y = y;
+		i_buf_cr_spike += 2;
+	}
 }
 
 inline void PlottingArea::buf_cr_clear()
 {
-	i_buf_cairo = 0;
+	i_buf_cr = i_buf_cr_spike = 1;
 }
 
 }

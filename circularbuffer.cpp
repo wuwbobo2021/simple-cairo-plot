@@ -252,8 +252,7 @@ Range CircularBuffer::get_value_range(Range range, unsigned int chk_step)
 	float min = numeric_limits<float>::max(), max = numeric_limits<float>::lowest();
 	
 	// optimized for scrolling right, but not for scrolling left
-	if (last.range_i_min_max_scan.contain(range.min())
-	&&  range.contain(last.range_i_min_max_scan.max())
+	if (range.intersected_not_left_of(last.range_i_min_max_scan)
 	&&  range.contain(last.range_i_min_max))
 	{
 		imin = last.range_i_min_max.min(); min = last.range_min_max.min();
@@ -273,7 +272,7 @@ Range CircularBuffer::get_value_range(Range range, unsigned int chk_step)
 		}
 	}
 	
-	float* p = this->item_addr(il);
+	float* p = this->item_addr(this->index_to_rel(il));
 	this->unlock();
 	
 	for (i = il; i <= ir; i += chk_step) {
@@ -317,8 +316,7 @@ float CircularBuffer::get_average(Range range, unsigned int chk_step)
 	
 	// optimized for scrolling right, but not for scrolling left
 	if (last.range_i_av_val.min() > this->cnt_overwrite
-	&&  last.range_i_av_val.contain(range.min())
-	&&  range.contain(last.range_i_av_val.max()))
+	&&  range.intersected_not_left_of(last.range_i_av_val))
 	{
 		flag_add      = (range.max() > last.range_i_av_val.max());
 		flag_subtract = (range.min() > last.range_i_av_val.min());
@@ -352,13 +350,13 @@ float CircularBuffer::get_average(Range range, unsigned int chk_step)
 	float* p_add, * p_sub, * p_add_end, * p_sub_end;
 	if (flag_add) {
 		unsigned int add_cnt = div_ceil(ir_add - il_add + 1, chk_step);
-		p_add = this->item_addr(il_add);
+		p_add = this->item_addr(this->index_to_rel(il_add));
 		p_add_end = this->ptr_inc(p_add, (add_cnt - 1)*chk_step);
 		cnt += add_cnt;
 	}
 	if (flag_subtract) {
 		unsigned int sub_cnt = div_ceil(ir_sub - il_sub + 1, chk_step);
-		p_sub = this->item_addr(il_sub);
+		p_sub = this->item_addr(this->index_to_rel(il_sub));
 		p_sub_end = this->ptr_inc(p_sub, (sub_cnt - 1)*chk_step);
 		cnt -= sub_cnt;
 	}

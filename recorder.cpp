@@ -70,6 +70,7 @@ void Recorder::init(std::vector<VariableAccessPtr>& ptrs, unsigned int buf_size)
 		if (this->bufs) {delete[] bufs; bufs = NULL;}
 		if (this->areas) {delete[] areas; areas = NULL;}
 		if (this->eventboxes) {delete[] eventboxes; eventboxes = NULL;}
+		this->var_cnt = 0;
 		throw std::bad_alloc();
 	}
 	

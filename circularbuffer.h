@@ -23,7 +23,7 @@ namespace SimpleCairoPlot
 {
 
 class CircularBuffer
-{	
+{
 	float* buf = NULL; float* bufend = NULL;
 	float* end = NULL; //points to where the next item should be stored in
 	unsigned int bufsize = 0, cnt = 0;
@@ -289,7 +289,7 @@ inline void CircularBuffer::unlock()
 inline float* CircularBuffer::ptr_inc(float* p, unsigned int inc) const
 {
 	p += inc;
-	while (p > this->bufend)
+	if (p > this->bufend)
 		p -= this->bufsize;
 	return p;
 }
