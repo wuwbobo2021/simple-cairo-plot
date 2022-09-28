@@ -23,17 +23,41 @@ void PlottingArea::init(CircularBuffer* buf)
 		throw std::invalid_argument("PlottingArea::init(): the buffer pointer is null.");
 	this->source = buf;
 	
+	unsigned int limit_max = 2 * this->get_screen()->get_monitor_workarea().get_width();
+	if (limit_max > this->source->size()) limit_max = this->source->size();
+	this->plot_data_amount_max_range.set(Plot_Data_Amount_Limit_Min, limit_max);
+	
+	// memory allocation
+	unsigned int buf_cr_size = 2 * limit_max,
+	             buf_cr_spike_size = 4 * this->source->spike_buffer_size();
 	bool except_caught = false;
 	try {
 		this->buf_spike = new unsigned long int[this->source->spike_buffer_size()];
-		this->buf_cairo = new cairo_path_data_t[2*(this->source->size() + this->source->spike_buffer_size())];
+		this->buf_cr = new cairo_path_data_t[buf_cr_size + buf_cr_spike_size];
 	} catch (std::bad_alloc) {
 		except_caught = true;
 	}
-	if (except_caught || this->buf_spike == NULL || this->buf_cairo == NULL) {
+	if (except_caught || this->buf_spike == NULL || this->buf_cr == NULL) {
 		if (this->buf_spike) {delete this->buf_spike; this->buf_spike = NULL;}
 		throw std::bad_alloc();
 	}
+	
+	this->buf_cr_spike = this->buf_cr + buf_cr_size;
+	
+	// initialize the cairo path buffer
+	cairo_path_data_t data_head;
+	data_head.header.type = CAIRO_PATH_LINE_TO; data_head.header.length = 2;
+	for (unsigned int i = 0; i < buf_cr_size; i += 2)
+		this->buf_cr[i] = data_head;
+	this->buf_cr[0].header.type = CAIRO_PATH_MOVE_TO;
+	
+	// initialize the spike segment of the cairo path buffer
+	data_head.header.type = CAIRO_PATH_MOVE_TO;
+	for (unsigned int i = 0; i < buf_cr_spike_size; i += 4)
+		this->buf_cr_spike[i] = data_head;
+	data_head.header.type = CAIRO_PATH_LINE_TO;
+	for (unsigned int i = 2; i < buf_cr_spike_size; i += 4)
+		this->buf_cr_spike[i] = data_head;
 	
 	this->dispatcher.connect(sigc::mem_fun(*(Gtk::Widget*)this, &Gtk::Widget::queue_draw));
 	
@@ -44,6 +68,9 @@ void PlottingArea::init(CircularBuffer* buf)
 PlottingArea::~PlottingArea()
 {
 	this->set_refresh_mode(false); //make sure the thread is ended
+	
+	if (this->buf_spike) delete this->buf_spike;
+	if (this->buf_cr) delete this->buf_cr;
 }
 
 bool PlottingArea::set_refresh_mode(bool auto_refresh, unsigned int interval)
@@ -252,12 +279,11 @@ bool PlottingArea::on_draw(const Cairo::RefPtr<Cairo::Context>& cr)
 
 void PlottingArea::adjust_index_step()
 {
-	unsigned int plot_data_amount_max = 2 * this->get_allocation().get_width();
-	if (plot_data_amount_max < Plot_Data_Amount_Limit_Min)
-		plot_data_amount_max = Plot_Data_Amount_Limit_Min;
+	unsigned int plot_data_amount_max =
+		this->plot_data_amount_max_range.fit_value(2 * this->get_allocation().get_width());
 	
 	this->index_step = 1;
-	while (this->range_x.length() / this->index_step > plot_data_amount_max)
+	while (ceil((this->range_x.length() + 1) / this->index_step) > plot_data_amount_max)
 		this->index_step++;
 }
 
@@ -342,7 +368,7 @@ Gtk::Allocation PlottingArea::draw_grid(const Cairo::RefPtr<Cairo::Context>& cr)
 				str_x_val = float_to_str(val, this->oss);
 				if (!this->option_axis_x_int_values || str_x_val != str_x_val_prev) {
 					cr->move_to(gx_cur, inner_y2 + 10);
-					cr->show_text(float_to_str(val, this->oss));
+					cr->show_text(str_x_val);
 				}
 				if (this->option_axis_x_int_values) str_x_val_prev = str_x_val;
 			}
@@ -380,10 +406,11 @@ void PlottingArea::plot(const Cairo::RefPtr<Cairo::Context>& cr, Gtk::Allocation
 {
 	if (alloc.has_zero_area()) return;
 	if (this->source->count() < 2) return;
-
+	
 	AxisRange range_x_abs = this->source->range_to_abs(this->range_x);
 	unsigned int i_min = range_x_abs.min(), i_max = range_x_abs.max() + 1;
-	if (i_max >= this->source->count_overall()) i_max--;
+	if (i_max > this->source->count_overall() - 1)
+		i_max = this->source->count_overall() - 1;
 	
 	AxisRange alloc_y(alloc.get_y(), alloc.get_y() + alloc.get_height());
 	float w_cur = alloc.get_x(),
@@ -392,7 +419,7 @@ void PlottingArea::plot(const Cairo::RefPtr<Cairo::Context>& cr, Gtk::Allocation
 	      h_cur = this->range_y.map_reverse(val_first, alloc_y);
 	
 	this->buf_cr_clear();
-	this->buf_cr_add(w_cur, h_cur, true); i_min++;
+	this->buf_cr_add(w_cur, h_cur); i_min++;
 	for (unsigned int i = i_min; i <= i_max; i += this->index_step) {
 		w_cur += w_unit;
 		h_cur = this->range_y.map_reverse(this->source->abs_index_item(i), alloc_y);
@@ -412,12 +439,14 @@ void PlottingArea::plot(const Cairo::RefPtr<Cairo::Context>& cr, Gtk::Allocation
 			this->buf_cr_add(w_cur, h_cur, true);
 			w_cur += w_unit;
 			h_cur = this->range_y.map_reverse(this->source->item(i + 1), alloc_y);
-			this->buf_cr_add(w_cur, h_cur);
+			this->buf_cr_add(w_cur, h_cur, true);
 		}
 	}
 	
-	cairo_path_t path_info = {CAIRO_STATUS_SUCCESS, this->buf_cairo, (int)this->i_buf_cairo};
+	cairo_path_t path_info  = {CAIRO_STATUS_SUCCESS, this->buf_cr, this->i_buf_cr - 1};
 	cairo_append_path(cr->cobj(), &path_info);
+	cairo_path_t spike_info = {CAIRO_STATUS_SUCCESS, this->buf_cr_spike, this->i_buf_cr_spike - 1};
+	cairo_append_path(cr->cobj(), &spike_info);
 	
 	cr->set_line_width(1.0);
 	set_cr_color(cr, this->color_plot);
