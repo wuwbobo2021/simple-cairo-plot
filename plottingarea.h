@@ -51,7 +51,7 @@ class PlottingArea: public Gtk::DrawingArea
 	
 	// used for auto-refresh mode
 	std::thread* thread_timer; 
-	bool flag_auto_refresh = false;
+	volatile bool flag_auto_refresh = false;
 	unsigned int refresh_interval = 20; //50 Hz
 	
 	void refresh_loop();
