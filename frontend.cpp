@@ -9,6 +9,9 @@
 
 #include <glibmm/stringutils.h>
 
+using namespace std::chrono;
+using namespace std::this_thread;
+
 using namespace SimpleCairoPlot;
 
 Frontend::Frontend() {}
@@ -16,11 +19,6 @@ Frontend::Frontend() {}
 Frontend::Frontend(std::vector<VariableAccessPtr>& ptrs, unsigned int buf_size)
 {
 	this->init(ptrs, buf_size);
-}
-
-Frontend::~Frontend()
-{
-	this->close();
 }
 
 void Frontend::init(std::vector<VariableAccessPtr>& ptrs, unsigned int buf_size)
@@ -32,26 +30,14 @@ void Frontend::init(std::vector<VariableAccessPtr>& ptrs, unsigned int buf_size)
 }
 
 #ifndef _WIN32
+
 void Frontend::open()
 {
 	if (this->thread_gtk || this->window) return;
 	this->thread_gtk = new std::thread(&Frontend::app_run, this);
 	
-	while (! this->window)
-		std::this_thread::sleep_for(std::chrono::milliseconds(10));
-	std::this_thread::sleep_for(std::chrono::milliseconds(10));
-}
-#endif
-
-Recorder& Frontend::recorder() const
-{
-	unsigned int wait_ms = 0;
-	while (!this->window && wait_ms < 5000) {
-		std::this_thread::sleep_for(std::chrono::milliseconds(10)); wait_ms += 10;
-	}
-	if (! this->window)
-		throw std::runtime_error("Frontend::recorder(): frontend is not opened.");
-	return *this->rec;
+	while (! this->window) sleep_for(milliseconds(10));
+	sleep_for(milliseconds(10));
 }
 
 void Frontend::run()
@@ -60,40 +46,121 @@ void Frontend::run()
 		this->thread_gtk->join();
 		delete this->thread_gtk; this->thread_gtk = NULL;
 	} else
-		this->app_run();
+		this->app_run(); //run on current thread
 }
 
 void Frontend::close()
 {
 	if (! this->window) return;
 	
-	if (this->rec) this->rec->stop();
-	this->dispatcher_gtk->connect(sigc::mem_fun(*this, &Frontend::close_window));
-	this->dispatcher_gtk->emit(); //eventually deletes itself
+	this->rec->stop();
+	this->dispatcher_quit->emit(); //eventually deletes the dispatcher itself
 	
-	if (this->thread_gtk) {
-		this->thread_gtk->join();
-		delete this->thread_gtk; this->thread_gtk = NULL;
-	} else {
-		while (this->window)
-			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	if (this->thread_gtk)
+		this->run();
+	else //this function is called from another thread too
+		while (this->window) sleep_for(milliseconds(1));
+}
+
+Frontend::~Frontend()
+{
+	this->close();
+}
+
+#else
+
+void Frontend::open()
+{
+	if (this->thread_gtk || this->window) return;
+	
+	if (! thread_gtk)
+		thread_gtk = new std::thread(&Frontend::thread_loop, this);
+	else
+		this->flag_open = true;
+	while (! this->window) sleep_for(milliseconds(10));
+}
+
+void Frontend::run()
+{
+	if (! this->thread_gtk)
+		this->app_run();
+	else {
+		this->flag_open = true;
+		while (this->flag_open)
+			sleep_for(milliseconds(500));
 	}
+}
+
+void Frontend::close()
+{
+	if (! this->window) return;
+	
+	this->rec->stop();
+	this->dispatcher_quit->emit(); //eventually deletes itself
+	
+	while (this->window) sleep_for(milliseconds(10));
+}
+
+Frontend::~Frontend()
+{
+	if (! thread_gtk) return;
+	
+	if (this->window)
+		this->dispatcher_quit->emit();
+	this->flag_destruct = true;
+	this->thread_gtk->detach();
+	delete this->thread_gtk;
+}
+
+#endif
+
+Recorder& Frontend::recorder() const
+{
+	unsigned int wait_ms = 0;
+	while (!this->window && wait_ms < 5000) {
+		sleep_for(milliseconds(10)); wait_ms += 10;
+	}
+	if (! this->window)
+		throw std::runtime_error("Frontend::recorder(): frontend is not opened.");
+	return *this->rec;
 }
 
 /*------------------------------ private functions ------------------------------*/
 
+#ifdef _WIN32
+void Frontend::thread_loop()
+{
+	while (! flag_destruct) {
+		if (! flag_open) {
+			sleep_for(milliseconds(200)); continue;
+		}
+		this->app_run();
+		flag_open = false;
+	}
+	
+	while (true) //to avoid segment fault, keep this thread until the real main thread exits
+		sleep_for(seconds(10));
+}
+#endif
+
 void Frontend::app_run()
 {
-	Glib::RefPtr<Gtk::Application> app = Gtk::Application::create(this->app_name);
-	this->dispatcher_gtk = new Glib::Dispatcher;
+	std::string app_name = "org.simple-cairo-plot.frontend_";
+	app_name += std::to_string(steady_clock::now().time_since_epoch().count());
+	Glib::RefPtr<Gtk::Application> app = Gtk::Application::create(app_name);
+	
+	this->dispatcher_quit = new Glib::Dispatcher;
+	this->dispatcher_quit->connect(sigc::mem_fun(*(app.get()), &Gtk::Application::quit));
+	
 	this->create_window();
 	this->create_file_dialog();
 	
 	app->run(*this->window);
 	
 	this->window = NULL; //the window is already destructed when the thread exits Application::run()
-	delete this->file_dialog; delete this->dispatcher_gtk;
-} // Unsolved problem on Windows when running in a new thread created by open(): Segmentation fault received here.
+	delete this->file_dialog;
+	delete this->dispatcher_quit;
+}
 
 void Frontend::create_window()
 {
@@ -108,7 +175,7 @@ void Frontend::create_window()
 	           * button_save = Gtk::manage(new Gtk::Button("Save"));
 	button_open->signal_clicked().connect(sigc::mem_fun(*this, &Frontend::on_button_open_clicked));
 	button_save->signal_clicked().connect(sigc::mem_fun(*this, &Frontend::on_button_save_clicked));
-
+	
 	Gtk::Box* box = Gtk::manage(new Gtk::Box(Gtk::ORIENTATION_HORIZONTAL)),
 	        * bar = Gtk::manage(new Gtk::Box(Gtk::ORIENTATION_VERTICAL));
 	
@@ -133,6 +200,7 @@ void Frontend::create_file_dialog()
 	Glib::RefPtr<Gtk::FileFilter> filter = Gtk::FileFilter::create();
 	filter->set_name("CSV files (.csv)");
 	filter->add_pattern("*.csv"); filter->add_mime_type("text/csv");
+	
 	this->file_dialog = new Gtk::FileChooserDialog("Open .csv file", Gtk::FILE_CHOOSER_ACTION_OPEN);
 	this->file_dialog->set_select_multiple(false);
 	this->file_dialog->add_filter(filter);
@@ -198,11 +266,5 @@ void Frontend::on_button_save_clicked()
 	
 	bool suc = this->rec->save_csv(path);
 	if (! suc) this->window->set_title(this->title + " - Failed to save as file");
-}
-
-// used by dispatcher_gtk
-void Frontend::close_window()
-{
-	this->window->close();	
 }
 

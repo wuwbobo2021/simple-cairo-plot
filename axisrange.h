@@ -9,119 +9,174 @@
 
 namespace SimpleCairoPlot
 {
+class ValueRange; class AxisValues;
+class IndexRange;
 
-class AxisRange //closed range
+using Range = ValueRange;
+using AxisRange = ValueRange;
+using UIntRange = IndexRange;
+
+class ValueRange //closed range
 {
-	float val_min, val_max;
-	float val_length;
-
 public:
-	AxisRange(float min, float max);
+	ValueRange(float min, float max);
 	
 	float min() const;
 	float max() const;
 	float length() const;
 	float center() const;
 	
-	bool operator==(const AxisRange& range) const;
-	bool operator!=(const AxisRange& range) const;
+	bool operator==(const ValueRange& range) const;
+	bool operator!=(const ValueRange& range) const;
 	
 	bool contain(float val) const;
-	bool contain(AxisRange range) const;
-	bool intersected_not_left_of(AxisRange range) const;
+	bool contain(ValueRange range) const;
 	float fit_value(float val) const;
-	AxisRange cut_range(AxisRange range) const;
-	AxisRange fit_range(AxisRange range) const;
+	ValueRange cut_range(ValueRange range) const;
+	ValueRange fit_range(ValueRange range) const;
 	
-	float map(float val, float target_width, bool reverse = false) const;
-	float map(float val, AxisRange range, bool reverse = false) const;
-	float map_reverse(float val, float target_width) const;
-	float map_reverse(float val, AxisRange range) const;
+	float map(float val, ValueRange range, bool reverse = false) const;
+	float map_reverse(float val, ValueRange range) const;
 	
 	void set(float min, float max);
-	
 	void move(float offset);
 	void min_move_to(float min); //max moves with min
 	void max_move_to(float max); //min moves with max
-	
-	void fit_by_range(AxisRange range);
-	
+	void fit_by_range(ValueRange range);
 	void scale(float factor, float cursor);
 	void scale(float factor);
 	
-	void set_int();
+private:
+	float val_min, val_max;
+	float val_length;
 };
 
-using Range = AxisRange;
+class AxisValues
+{
+public:
+	AxisValues(ValueRange range, unsigned int divider, bool adjust = true);
+	unsigned int count() const;
+	float operator[](unsigned int i) const;
+	
+private:
+	enum {Cnt_Choices = 5};
+	const float Choices[Cnt_Choices] = {1, 2, 2.5, 5, 10};
+	
+	float val_first, cell_width;
+	unsigned int cnt;
+};
 
-inline AxisRange::AxisRange(float min, float max)
+class IndexRange
+{
+public:
+	IndexRange();
+	IndexRange(unsigned long int min, unsigned long int max);
+	IndexRange(const ValueRange& ax);
+	
+	operator ValueRange() const;
+	ValueRange to_axis(long int offset = 0) const;
+	
+	operator bool() const;
+	unsigned long int min() const;
+	unsigned long int max() const;
+	unsigned long int count() const;
+	unsigned long int length() const;
+	unsigned long int count_by_step(unsigned int step) const;
+	
+	bool operator==(const IndexRange& range) const;
+	bool operator!=(const IndexRange& range) const;
+	
+	bool contain(unsigned long int i) const;
+	bool contain(IndexRange range) const;
+	bool intersected_not_left_of(IndexRange range) const;
+	unsigned long int fit_index(unsigned long int index) const;
+	unsigned long int fit_value(unsigned long int val) const; //same as fit_index()
+	IndexRange cut_range(IndexRange range) const;
+	IndexRange fit_range(IndexRange range) const;
+	
+	float map(unsigned long int val, ValueRange range, bool reverse = false) const;
+	float map_reverse(unsigned long int val, ValueRange range) const;
+	
+	void set(unsigned long int min, unsigned long int max);
+	void move(long int offset);
+	void min_move_to(unsigned long int min); //min moves with max
+	void max_move_to(unsigned long int max); //max moves with min
+	void fit_by_range(IndexRange range);
+	void step_align_with(IndexRange range, unsigned int step);
+
+private:
+	bool valid;
+	unsigned long int val_min, val_max, cnt;
+};
+
+long int subtract(unsigned long int a, unsigned long int b);
+IndexRange intersection(IndexRange range1, IndexRange range2);
+
+/*------------------------------ ValueRange functions ------------------------------*/
+
+inline ValueRange::ValueRange(float min, float max)
 {
 	this->set(min, max);
 }
 
-inline float AxisRange::min() const
+inline float ValueRange::min() const
 {
 	return this->val_min;
 }
 
-inline float AxisRange::max() const
+inline float ValueRange::max() const
 {
 	return this->val_max;
 }
 
-inline float AxisRange::length() const
+inline float ValueRange::length() const
 {
 	return this->val_length;
 }
 
-inline float AxisRange::center() const
+inline float ValueRange::center() const
 {
 	return (this->val_min + this->val_max) / 2.0;
 }
 
-inline bool AxisRange::operator==(const AxisRange& range) const
+inline bool ValueRange::operator==(const ValueRange& range) const
 {
 	return this->val_min == range.min() && this->val_max == range.max();
 }
 
-inline bool AxisRange::operator!=(const AxisRange& range) const
+inline bool ValueRange::operator!=(const ValueRange& range) const
 {
 	return this->val_min != range.min() || this->val_max != range.max();
 }
 
-inline bool AxisRange::contain(float val) const
+inline bool ValueRange::contain(float val) const
 {
 	return this->val_min <= val && val <= this->val_max;
 }
 
-inline bool AxisRange::contain(AxisRange range) const
+inline bool ValueRange::contain(ValueRange range) const
 {
 	return this->val_min <= range.min() && range.max() <= this->val_max;
 }
 
-inline bool AxisRange::intersected_not_left_of(AxisRange range) const
-{
-	return range.contain(this->val_min) && this->contain(range.max());
-}
-
-inline float AxisRange::fit_value(float val) const
+inline float ValueRange::fit_value(float val) const
 {
 	if (val < this->val_min) return this->val_min;
 	if (val > this->val_max) return this->val_max;
 	return val;
 }
 
-inline AxisRange AxisRange::cut_range(AxisRange range) const
+inline ValueRange ValueRange::cut_range(ValueRange range) const
 {
-	return AxisRange(this->fit_value(range.min()), this->fit_value(range.max()));
+	return ValueRange(this->fit_value(range.min()), this->fit_value(range.max()));
 }
 
-inline AxisRange AxisRange::fit_range(AxisRange range) const
+inline ValueRange ValueRange::fit_range(ValueRange range) const
 {
 	if (this->contain(range)) return range;
 	if (range.length() >= this->val_length) return *this;
 	
-	AxisRange range_new = range;
+	ValueRange range_new = range;
 	if (range.min() < this->val_min)
 		range_new.min_move_to(this->val_min);
 	else if (range.max() > this->val_max)
@@ -130,32 +185,22 @@ inline AxisRange AxisRange::fit_range(AxisRange range) const
 	return range_new;
 }
 
-inline float AxisRange::map(float val, float target_width, bool reverse) const
+inline float ValueRange::map(float val, ValueRange range, bool reverse) const
 {
 	if (this->val_length == 0) return 0;
 	
-	val = fit_value(val); //ensures that val is valid
-	val = (target_width * (val - this->val_min)) / this->val_length;
-	if (reverse) val = target_width - val;
-	return val;
+	val = this->fit_value(val); //ensures that val is valid
+	val = (range.length() * (val - this->val_min)) / this->val_length;
+	if (reverse) val = range.length() - val;
+	val += range.min(); return val;
 }
 
-inline float AxisRange::map(float val, AxisRange range, bool reverse) const
-{
-	return this->map(val, range.length(), reverse) + range.min();
-}
-
-inline float AxisRange::map_reverse(float val, float target_width) const
-{
-	return this->map(val, target_width, true);
-}
-
-inline float AxisRange::map_reverse(float val, AxisRange range) const
+inline float ValueRange::map_reverse(float val, ValueRange range) const
 {
 	return this->map(val, range, true);
 }
 
-inline void AxisRange::set(float min, float max)
+inline void ValueRange::set(float min, float max)
 {
 	if (min <= max) {
 		this->val_min = min; this->val_max = max;
@@ -166,32 +211,27 @@ inline void AxisRange::set(float min, float max)
 	this->val_length = this->val_max - this->val_min;
 }
 
-inline void AxisRange::move(float offset)
+inline void ValueRange::move(float offset)
 {
 	this->val_min += offset; this->val_max += offset;
 }
 
-inline void AxisRange::min_move_to(float min)
+inline void ValueRange::min_move_to(float min)
 {
-	float offset = min - this->val_min;
-	this->val_min = min;
-	this->val_max += offset;
+	this->move(min - this->val_min);
 }
 
-inline void AxisRange::max_move_to(float max)
+inline void ValueRange::max_move_to(float max)
 {
-	float offset = max - this->val_max;
-	this->val_max = max;
-	this->val_min += offset;
+	this->move(max - this->val_max);
 }
 
-inline void AxisRange::fit_by_range(AxisRange range)
+inline void ValueRange::fit_by_range(ValueRange range)
 {
-	AxisRange range_new = range.fit_range(*this);
-	this->set(range_new.min(), range_new.max());
+	*this = range.fit_range(*this);
 }
 
-inline void AxisRange::scale(float factor, float cursor)
+inline void ValueRange::scale(float factor, float cursor)
 {
 	if (factor < 0) factor = -factor;
 	
@@ -200,33 +240,14 @@ inline void AxisRange::scale(float factor, float cursor)
 	this->set(cursor - l, cursor + r);
 }
 
-inline void AxisRange::scale(float factor)
+inline void ValueRange::scale(float factor)
 {
 	this->scale(factor, this->center());
 }
 
-inline void AxisRange::set_int()
-{
-	using namespace std;
-	this->val_min = round(this->val_min);
-	this->val_max = round(this->val_max);
-}
+/*------------------------------ AxisValues functions ------------------------------*/
 
-class AxisValues
-{
-	enum {Cnt_Choices = 5};
-	const float Choices[Cnt_Choices] = {1, 2, 2.5, 5, 10};
-	
-	float val_first, cell_width;
-	unsigned int cnt;
-
-public:
-	AxisValues(AxisRange range, unsigned int divider, bool adjust = true);
-	unsigned int count() const;
-	float operator[](unsigned int i) const;
-};
-
-inline AxisValues::AxisValues(AxisRange range, unsigned int divider, bool adjust)
+inline AxisValues::AxisValues(ValueRange range, unsigned int divider, bool adjust)
 {
 	using namespace std;
 	if (divider == 0) divider = 1;
@@ -265,6 +286,229 @@ inline unsigned int AxisValues::count() const
 inline float AxisValues::operator[](unsigned int i) const
 {
 	return this->val_first + i*this->cell_width;
+}
+
+/*------------------------------ IndexRange functions ------------------------------*/
+
+inline long int subtract(unsigned long int a, unsigned long int b)
+{
+	if (a >= b)
+		return a - b;
+	else
+		return -(long int)(b - a);
+}
+
+inline IndexRange intersection(IndexRange range1, IndexRange range2)
+{
+	return range1.cut_range(range2);
+}
+
+inline IndexRange::IndexRange()
+{
+	this->valid = false;
+	this->cnt = this->val_min = this->val_max = 0;
+}
+
+inline IndexRange::IndexRange(unsigned long int min, unsigned long int max)
+{
+	this->set(min, max);
+}
+
+inline IndexRange::IndexRange(const ValueRange& ax)
+{
+	if (ax.max() < 0) {
+		this->cnt = this->val_min = this->val_max = 0;
+		this->valid = false; return;
+	}
+	
+	using namespace std;
+	float min = ax.min(); if (min < 0) min = 0;
+	this->set(round(min), round(ax.max()));
+}
+
+inline IndexRange::operator ValueRange() const
+{
+	return this->to_axis();
+}
+
+inline ValueRange IndexRange::to_axis(long int offset) const
+{
+	if (! this->valid) return ValueRange(-1, -1);
+	return ValueRange((float)this->val_min + offset,
+	                  (float)this->val_max + offset);
+}
+
+inline IndexRange::operator bool() const
+{
+	return this->valid;
+}
+
+inline unsigned long int IndexRange::min() const
+{
+	return this->val_min;
+}
+
+inline unsigned long int IndexRange::max() const
+{
+	return this->val_max;
+}
+
+inline unsigned long int IndexRange::count() const
+{
+	return this->cnt;
+}
+
+inline unsigned long int IndexRange::length() const
+{
+	if (! this->valid) return 0;
+	return this->count() - 1;
+}
+
+inline unsigned long int IndexRange::count_by_step(unsigned int step) const
+{
+	if (!this->valid || step == 0) return 0;
+	unsigned int quo = this->count() / step, rem = this->count() % step;
+	if (rem > 0) quo++; return quo;
+}
+
+inline bool IndexRange::operator==(const IndexRange& range) const
+{
+	if (!this->valid && !range.valid) return true;
+	return this->valid && range.valid
+	    && this->val_min == range.min() && this->val_max == range.max();
+}
+
+inline bool IndexRange::operator!=(const IndexRange& range) const
+{
+	return !(*this == range);
+}
+
+inline bool IndexRange::contain(unsigned long int i) const
+{
+	return this->valid && this->val_min <= i && i <= this->val_max;
+}
+
+inline bool IndexRange::contain(IndexRange range) const
+{
+	return this->valid && range.valid
+	    && this->val_min <= range.val_min && range.val_max <= this->val_max;
+}
+
+inline bool IndexRange::intersected_not_left_of(IndexRange range) const
+{
+	if (!this->valid && !range.valid) return false;
+	return range.contain(this->val_min) && this->contain(range.max());
+}
+
+inline unsigned long int IndexRange::fit_index(unsigned long int index) const
+{
+	if (! this->valid) return 0;
+	if (index < this->val_min) return this->val_min;
+	if (index > this->val_max) return this->val_max;
+	return index;
+}
+
+inline unsigned long int IndexRange::fit_value(unsigned long int val) const
+{
+	return this->fit_index(val);
+}
+
+inline IndexRange IndexRange::cut_range(IndexRange range) const
+{
+	if (!this->valid || !range.valid) return IndexRange();
+	if (!this->contain(range.min()) && !this->contain(range.max()) && !range.contain(*this))
+		return IndexRange();
+	return IndexRange(this->fit_index(range.min()), this->fit_index(range.max()));
+}
+
+inline IndexRange IndexRange::fit_range(IndexRange range) const
+{
+	if (!this->valid || !range.valid) return IndexRange();
+	if (this->contain(range)) return range;
+	if (range.count() >= this->cnt) return *this;
+	
+	IndexRange range_new = range;
+	if (range.min() < this->val_min)
+		range_new.min_move_to(this->val_min);
+	else if (range.max() > this->val_max)
+		range_new.max_move_to(this->val_max);
+	
+	return range_new;
+}
+
+inline float IndexRange::map(unsigned long int val, ValueRange range, bool reverse) const
+{
+	val = this->fit_value(val);
+	return ValueRange(0, this->length()).map(val - this->val_min, range, reverse);
+}
+
+inline float IndexRange::map_reverse(unsigned long int val, ValueRange range) const
+{
+	return this->map(val, range, true);
+}
+
+inline void IndexRange::set(unsigned long int min, unsigned long int max)
+{
+	if (max < min) {
+		this->cnt = this->val_min = this->val_max = 0;
+		this->valid = false; return;
+	}
+	
+	this->val_min = min; this->val_max = max;
+	this->cnt = max - min + 1;
+	this->valid = true;
+}
+
+inline void IndexRange::move(long int offset)
+{
+	if (! this->valid) return;
+	if (offset < -(long long int)this->val_min)
+		offset = -(long long int)this->val_min;
+	this->val_min += offset; this->val_max += offset; //unsigned long int + long int works
+}
+
+inline void IndexRange::min_move_to(unsigned long int min)
+{
+	// note: signed - unsigned is dangerous
+	if (! this->valid) return;
+	this->move(subtract(min, this->val_min));
+}
+
+inline void IndexRange::max_move_to(unsigned long int max)
+{
+	if (! this->valid) return;
+	this->move(subtract(max, this->val_max));
+}
+
+inline void IndexRange::fit_by_range(IndexRange range)
+{
+	*this = range.fit_range(*this);
+}
+
+inline void IndexRange::step_align_with(IndexRange range, unsigned int step)
+{
+	if (! range) return;
+	
+	// note: signed *,/,<,> unsigned is dangerous
+	long int diff_min = subtract(this->min(), range.min());
+	diff_min = round(diff_min / (long int)step) * (long int)step;
+	
+	unsigned long int new_min, new_max;
+	
+	if (diff_min >= 0 || -diff_min < (long long int)range.min())
+		new_min = range.min() + diff_min;
+	else
+		new_min = 0;
+	
+	new_max = new_min + this->count_by_step(step)*step;
+	while (new_max > this->max()) {
+		if (new_max >= step)
+			new_max -= step;
+		else
+			new_max = 0;
+	}
+	
+	this->set(new_min, new_max);
 }
 
 }

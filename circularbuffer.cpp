@@ -63,18 +63,13 @@ void CircularBuffer::copy_from(const CircularBuffer& from)
 	unsigned int cnt_cpy = from.cnt; //actual amount of data to be copied
 	if (cnt_cpy > this->bufsize)
 		cnt_cpy = this->bufsize;
+	IndexRange range_cpy(from.count() - cnt_cpy, from.count() - 1);
 	
-	const float* pf1, * pf2 = NULL; //copy from two segments in from.buf
-	unsigned int cnt_f1, cnt_f2;
-	pf1 = from.item_addr(from.cnt - cnt_cpy);
-	if (pf1 + cnt_cpy - 1 > from.bufend) {
-		cnt_f1 = from.bufend - pf1 + 1;
-		pf2 = from.buf; cnt_f2 = cnt_cpy - cnt_f1;
-	} else
-		cnt_f1 = cnt_cpy;
-	
-	memcpy(this->buf, pf1, cnt_f1*sizeof(float));
-	if (pf2) memcpy(this->buf + cnt_f1, pf2, cnt_f2*sizeof(float));
+	BufRangeMap map = from.map_from(range_cpy);
+	memcpy(this->buf, from.buf + map.former.min(), map.former.count()*sizeof(float));
+	if (map.latter)
+		memcpy(this->buf + map.former.count(), from.buf + map.latter.min(),
+		       map.latter.count()*sizeof(float));
 	
 	this->cnt = cnt_cpy;
 	this->end = this->ptr_inc(this->buf, cnt_cpy);
@@ -166,15 +161,11 @@ void CircularBuffer::load(const float* data, unsigned int cnt, bool spike_check)
 			this->push(*pf, true, false);
 		this->cnt_overwrite += cnt - cnt_load;
 	} else {
-		float* p1 = this->end, * p2 = NULL; //two segments of the current buffer
-		unsigned int cnt1, cnt2;
-		if (p1 + cnt_load - 1 > this->bufend) {
-			cnt1 = this->bufend - p1 + 1;
-			p2 = this->buf; cnt2 = cnt_load - cnt1;
-		} else
-			cnt1 = cnt_load;
-		memcpy(p1, pf, cnt1*sizeof(float));
-		if (p2) memcpy(p2, pf + cnt1, cnt2*sizeof(float));
+		BufRangeMap map = this->map_from(IndexRange(0, cnt_load - 1));
+		memcpy(this->buf + map.former.min(), pf, map.former.count()*sizeof(float));
+		if (map.latter)
+			memcpy(this->buf + map.latter.min(), pf + map.former.count(),
+			       map.latter.count()*sizeof(float));
 		
 		unsigned long int tmp_cnt = this->cnt + cnt;
 		if (tmp_cnt > this->bufsize) {
@@ -187,7 +178,7 @@ void CircularBuffer::load(const float* data, unsigned int cnt, bool spike_check)
 	this->unlock();
 }
 
-unsigned int CircularBuffer::get_spikes(Range range, unsigned int* buf_out)
+unsigned int CircularBuffer::get_spikes(IndexRange range, unsigned int* buf_out)
 {
 	if (this->buf_spike_cnt == 0) return 0;
 	
@@ -209,7 +200,7 @@ unsigned int CircularBuffer::get_spikes(Range range, unsigned int* buf_out)
 	return cnt_sp;
 }
 
-unsigned int CircularBuffer::get_spikes(Range range, unsigned long int* buf_out)
+unsigned int CircularBuffer::get_spikes(IndexRange range, unsigned long int* buf_out)
 {
 	if (this->buf_spike_cnt == 0) return 0;
 	
@@ -230,11 +221,11 @@ unsigned int CircularBuffer::get_spikes(Range range, unsigned long int* buf_out)
 	return cnt_sp;
 }
 
-Range CircularBuffer::get_value_range(Range range, unsigned int chk_step)
+ValueRange CircularBuffer::get_value_range(IndexRange range, unsigned int chk_step)
 {
 	using std::numeric_limits;
 	
-	if (this->cnt == 0) return Range(0, 0);
+	if (this->cnt == 0) return ValueRange(0, 0);
 	
 	// indexes used during the calculation are "absolute"
 	range = this->range().cut_range(range);
@@ -290,13 +281,7 @@ Range CircularBuffer::get_value_range(Range range, unsigned int chk_step)
 	return last.range_min_max;
 }
 
-inline unsigned int div_ceil(unsigned int dividend, unsigned int divisor)
-{
-	unsigned int quo = dividend / divisor, rem = dividend % divisor;
-	if (rem > 0) quo++; return quo;
-}
-
-float CircularBuffer::get_average(Range range, unsigned int chk_step)
+float CircularBuffer::get_average(IndexRange range, unsigned int chk_step)
 {
 	if (this->cnt == 0) return 0;
 	
@@ -330,7 +315,7 @@ float CircularBuffer::get_average(Range range, unsigned int chk_step)
 			il_sub = last.range_i_av_val.min(); ir_sub = range.min() - 1;
 			cnt_operate += ir_sub - il_sub + 1;
 		}
-		flag_optimize = (cnt_operate < range.length());
+		flag_optimize = (cnt_operate < range.count());
 	}
 	
 	if (! flag_optimize) {
@@ -343,19 +328,19 @@ float CircularBuffer::get_average(Range range, unsigned int chk_step)
 	}
 	
 	if (flag_optimize) {
-		cnt = div_ceil(last.range_i_av_val.length() + 1, chk_step);
+		cnt = last.range_i_av_val.count_by_step(chk_step);
 		sum = cnt * last.av_val;
 	}
 	
 	float* p_add, * p_sub, * p_add_end, * p_sub_end;
 	if (flag_add) {
-		unsigned int add_cnt = div_ceil(ir_add - il_add + 1, chk_step);
+		unsigned int add_cnt = IndexRange(il_add, ir_add).count_by_step(chk_step);
 		p_add = this->item_addr(this->index_to_rel(il_add));
 		p_add_end = this->ptr_inc(p_add, (add_cnt - 1)*chk_step);
 		cnt += add_cnt;
 	}
 	if (flag_subtract) {
-		unsigned int sub_cnt = div_ceil(ir_sub - il_sub + 1, chk_step);
+		unsigned int sub_cnt = IndexRange(il_sub, ir_sub).count_by_step(chk_step);
 		p_sub = this->item_addr(this->index_to_rel(il_sub));
 		p_sub_end = this->ptr_inc(p_sub, (sub_cnt - 1)*chk_step);
 		cnt -= sub_cnt;

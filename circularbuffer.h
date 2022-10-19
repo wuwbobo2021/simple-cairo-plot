@@ -21,45 +21,17 @@
 
 namespace SimpleCairoPlot
 {
+class CircularBuffer; struct BufRangeMap;
+
+// mapping from index range in the circular buffer to 1 or 2 segment(s) in memory
+struct BufRangeMap {
+	IndexRange former, latter;
+	BufRangeMap();
+	BufRangeMap(IndexRange range, unsigned int bufsize, unsigned int cur);
+};
 
 class CircularBuffer
 {
-	float* buf = NULL; float* bufend = NULL;
-	float* end = NULL; //points to where the next item should be stored in
-	unsigned int bufsize = 0, cnt = 0;
-	volatile unsigned long int cnt_overwrite = 0;
-	
-	// used for spike check
-	float spike_check_ref_min = 0;
-	unsigned long int* buf_spike = NULL, * buf_spike_bufend = NULL;
-	unsigned long int* buf_spike_end = NULL;
-	unsigned int buf_spike_size = 0, buf_spike_cnt = 0;
-	float spike_check_av = 0;
-	
-	// used for optimization (indexes are "absolute")
-	struct MinMaxScanInfo {
-		Range range_i_min_max_scan = Range(-1, -1),
-		      range_i_min_max = Range(0, 0), //two indexes stored as a range for convenience
-		      range_min_max = Range(0, 0);
-	};
-	struct AvCalcInfo {
-		Range range_i_av_val = Range(-1, -1);
-		float av_val = 0;
-	};
-	std::atomic<MinMaxScanInfo> last_min_max_scan;
-	std::atomic<AvCalcInfo> last_av_calc;
-	
-	// used to avoid multithreaded conflicts
-	std::atomic_flag flag_lock = ATOMIC_FLAG_INIT; //atomic_flag is not implemented with mutex
-	std::atomic_int read_lock_counter; //atomic_int is not implemented with mutex on most platforms
-	
-	void copy_from(const CircularBuffer& from);
-	float* ptr_inc(float* p, unsigned int inc = 1) const;
-	float* item_addr(unsigned int i) const;
-	unsigned long int buf_spike_item(unsigned int i) const;
-	void buf_spike_push(unsigned long int val);
-	void spike_check();
-	
 public:
 	// locks for writing (except the constructor without parameter and the destructor)
 	CircularBuffer(); void init(unsigned int sz); //init() must be called if this constructor is used
@@ -70,18 +42,18 @@ public:
 	~CircularBuffer();
 	
 	unsigned int size() const; unsigned int spike_buffer_size() const;
-	bool is_valid_range(Range range) const;
+	bool is_valid_range(IndexRange range) const;
 	unsigned int count() const;
-	Range range() const;
-	Range range_max() const;
+	IndexRange range() const;
+	IndexRange range_max() const;
 	bool is_full() const;
 	unsigned long int count_overwritten() const;
 	unsigned long int count_overall() const;
 	
 	unsigned long int index_to_abs(unsigned int i) const; //returns a fixed index after filling
 	unsigned int index_to_rel(unsigned long int i) const; //turn back to "relative" index
-	Range range_to_abs(Range range) const;
-	Range range_to_rel(Range range_abs) const;
+	IndexRange range_to_abs(IndexRange range) const;
+	IndexRange range_to_rel(IndexRange range_abs) const;
 	
 	float& item(unsigned int i) const;
 	float& operator[](unsigned int i) const;
@@ -97,21 +69,77 @@ public:
 	// get_spikes() locks for reading
 	void set_spike_check_ref_min(float val);
 	unsigned int get_spikes(unsigned int* buf_out);
-	unsigned int get_spikes(Range range, unsigned int* buf_out);
-	unsigned int get_spikes(Range range, unsigned long int* buf_out);
+	unsigned int get_spikes(IndexRange range, unsigned int* buf_out);
+	unsigned int get_spikes(IndexRange range, unsigned long int* buf_out);
 	
 	// locks for reading; optimized for scrolling right
-	Range get_value_range(unsigned int chk_step = 1);
-	Range get_value_range(Range range, unsigned int chk_step = 1);
+	ValueRange get_value_range(unsigned int chk_step = 1);
+	ValueRange get_value_range(IndexRange range, unsigned int chk_step = 1);
 	float get_average(unsigned int chk_step = 1);
-	float get_average(Range range, unsigned int chk_step = 1);
+	float get_average(IndexRange range, unsigned int chk_step = 1);
 	
 	// the buffer can be locked externally ONLY before writing to or reading multiple
 	// data from the buffer through operator[]; member functions that lock for writing
 	// should NOT be called inside that lock() and unlock() pair.
 	void lock(bool for_writing = false);
 	void unlock();
+	
+private:
+	float* buf = NULL; float* bufend = NULL;
+	float* end = NULL; //points to where the next item should be stored in
+	unsigned int bufsize = 0, cnt = 0;
+	volatile unsigned long int cnt_overwrite = 0;
+	
+	// used for spike check
+	float spike_check_ref_min = 0;
+	unsigned long int* buf_spike = NULL, * buf_spike_bufend = NULL;
+	unsigned long int* buf_spike_end = NULL;
+	unsigned int buf_spike_size = 0, buf_spike_cnt = 0;
+	float spike_check_av = 0;
+	
+	// used for optimization (indexes are "absolute")
+	struct MinMaxScanInfo {
+		IndexRange range_i_min_max_scan,
+		           range_i_min_max; //two indexes stored as a range for convenience
+		ValueRange range_min_max = ValueRange(0, 0);
+	};
+	struct AvCalcInfo {
+		IndexRange range_i_av_val;
+		float av_val = 0;
+	};
+	std::atomic<MinMaxScanInfo> last_min_max_scan;
+	std::atomic<AvCalcInfo> last_av_calc;
+	
+	// used to avoid multithreaded conflicts
+	std::atomic_flag flag_lock = ATOMIC_FLAG_INIT; //atomic_flag is not implemented with mutex
+	std::atomic_int read_lock_counter; //atomic_int is not implemented with mutex on most platforms
+	
+	void copy_from(const CircularBuffer& from);
+	float* ptr_inc(float* p, unsigned int inc = 1) const;
+	float* item_addr(unsigned int i) const;
+	BufRangeMap map_from(IndexRange range) const;
+	unsigned long int buf_spike_item(unsigned int i) const;
+	void buf_spike_push(unsigned long int val);
+	void spike_check();
 };
+
+inline BufRangeMap::BufRangeMap() {}
+
+inline BufRangeMap::BufRangeMap(IndexRange range, unsigned int bufsize, unsigned int cur)
+{
+	if (bufsize < 0 || cur >= bufsize) return;
+	range.fit_by_range(IndexRange(0, bufsize - 1)); if (!range) return;
+	
+	unsigned int il = cur + range.min();
+	if (il >= bufsize) il -= bufsize;
+	
+	unsigned int ir = il + range.count() - 1;
+	if (ir >= bufsize) {
+		this->former.set(il, bufsize - 1);
+		this->latter.set(0, ir - bufsize);
+	} else
+		this->former.set(il, ir);
+}
 
 inline unsigned int CircularBuffer::size() const
 {
@@ -123,9 +151,9 @@ inline unsigned int CircularBuffer::spike_buffer_size() const
 	return this->buf_spike_size;
 }
 
-inline bool CircularBuffer::is_valid_range(Range range) const
+inline bool CircularBuffer::is_valid_range(IndexRange range) const
 {
-	return range.min() >= 0 && range.max() < this->bufsize;
+	return range && range.max() < this->bufsize;
 }
 
 inline unsigned int CircularBuffer::count() const
@@ -133,17 +161,17 @@ inline unsigned int CircularBuffer::count() const
 	return this->cnt;
 }
 
-inline Range CircularBuffer::range() const
+inline IndexRange CircularBuffer::range() const
 {
 	if (this->cnt > 0)
-		return Range(0, this->cnt - 1);
+		return IndexRange(0, this->cnt - 1);
 	else
-		return Range(0, 0);
+		return IndexRange();
 }
 
-inline Range CircularBuffer::range_max() const
+inline IndexRange CircularBuffer::range_max() const
 {
-	return Range(0, this->bufsize - 1);
+	return IndexRange(0, this->bufsize - 1);
 }
 
 inline bool CircularBuffer::is_full() const
@@ -175,16 +203,16 @@ inline unsigned int CircularBuffer::index_to_rel(unsigned long int i) const
 		return 0;
 }
 
-inline Range CircularBuffer::range_to_abs(Range range) const
+inline IndexRange CircularBuffer::range_to_abs(IndexRange range) const
 {
-	Range range_abs = range;
+	IndexRange range_abs = range;
 	range_abs.move(this->cnt_overwrite);
 	return range_abs;
 }
 
-inline Range CircularBuffer::range_to_rel(Range range_abs) const
+inline IndexRange CircularBuffer::range_to_rel(IndexRange range_abs) const
 {
-	Range range = range_abs;
+	IndexRange range = range_abs;
 	range.min_move_to(this->index_to_rel(range_abs.min()));
 	return range;
 }
@@ -242,7 +270,7 @@ inline unsigned int CircularBuffer::get_spikes(unsigned int* buf_out)
 	return this->get_spikes(this->range(), buf_out);
 }
 
-inline Range CircularBuffer::get_value_range(unsigned int chk_step)
+inline ValueRange CircularBuffer::get_value_range(unsigned int chk_step)
 {
 	return this->get_value_range(this->range(), chk_step);
 }
@@ -273,18 +301,15 @@ inline void CircularBuffer::lock(bool for_writing)
 
 inline void CircularBuffer::unlock()
 {
-	// in case of two threads trying to unlock at the same time when the
-	// counter's original value is 1, because read_lock_counter is atomic,
-	// at least one of the two threads can fix the minus value problem.
 	if (this->read_lock_counter.load(std::memory_order_acquire) > 0) {
 		int counter = --this->read_lock_counter;
 		if (counter > 0) return;
-		if (counter < 0) this->read_lock_counter = 0;
+		if (counter < 0) this->read_lock_counter = 0; //no effect if lock/unlock are paired
 	}
 	this->flag_lock.clear(std::memory_order_release);
 }
 
-// private
+/*------------------------------ private functions ------------------------------*/
 
 inline float* CircularBuffer::ptr_inc(float* p, unsigned int inc) const
 {
@@ -300,6 +325,11 @@ inline float* CircularBuffer::item_addr(unsigned int i) const
 		return this->ptr_inc(this->buf, i);
 	else
 		return this->ptr_inc(this->end, i);
+}
+
+inline BufRangeMap CircularBuffer::map_from(IndexRange range) const
+{
+	return BufRangeMap(range, this->bufsize, this->item_addr(0) - this->buf);
 }
 
 inline unsigned long int CircularBuffer::buf_spike_item(unsigned int i) const

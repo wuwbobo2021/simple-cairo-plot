@@ -10,6 +10,7 @@
 #include <gtkmm/window.h>
 #include <gtkmm/filechooserdialog.h>
 #include <gtkmm/button.h>
+#include <gtkmm/checkbutton.h>
 
 namespace SimpleCairoPlot
 {
@@ -20,11 +21,16 @@ class Frontend: public sigc::trackable
 	Recorder* rec;
 	
 	std::thread* thread_gtk = NULL;
-	Glib::Dispatcher* dispatcher_gtk = NULL;
+	Glib::Dispatcher* dispatcher_quit = NULL;
+	Gtk::Window* volatile window = NULL;
 	
-	Gtk::Window* window = NULL;
 	Gtk::FileChooserDialog* file_dialog;
 	Gtk::Button* button_start_stop;
+	
+#ifdef _WIN32
+	volatile bool flag_open = true, flag_destruct = false;
+	void thread_loop();
+#endif
 	
 	void create_window();
 	void create_file_dialog();
@@ -35,11 +41,7 @@ class Frontend: public sigc::trackable
 	void on_button_open_clicked();
 	void on_button_save_clicked();
 	
-	void close_window();
-	
 public:
-	// two frontends on the same computer must have different `app_name`.
-	std::string app_name = "org.simple-cairo-plot.frontend";
 	std::string title = "Recorder";
 	
 	Frontend(); void init(std::vector<VariableAccessPtr>& ptrs, unsigned int buf_size);
@@ -48,10 +50,8 @@ public:
 	Frontend& operator=(const Frontend&) = delete;
 	virtual ~Frontend();
 	
-#ifndef _WIN32
 	void open(); //create a new thread to run the frontend
-#endif
-	Recorder& recorder() const; //notice: don't keep the returned reference when you need to close the frontend
+	Recorder& recorder() const; //notice: don't keep the returned reference when closing the frontend
 	void run(); //run in current thread or join the existing frontend thread, blocks
 	void close();
 };

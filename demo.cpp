@@ -12,7 +12,7 @@ using namespace SimpleCairoPlot;
 class Demo
 {
 	Frontend frontend;
-	unsigned int freq = 2; //Hz
+	unsigned int freq = 2; //Hz, sine wave frequency
 	steady_clock::time_point t_start;
 	
 	float t();
@@ -40,17 +40,10 @@ Demo::Demo()
 
 void Demo::run()
 {
-	// the recorder is created after the frontend opens, but on Windows
-	// the frontend can only be opened by `Frontend::run()`, which blocks
-	// current thread immediately. If you need to change options of the recorder,
-	// you must have another thread to do it.
-
 	this->t_start = steady_clock::now();
 	
-#ifndef _WIN32
 	this->frontend.open();
 	this->frontend.recorder().set_interval(10);
-#endif
 	this->frontend.run(); //blocks
 }
 

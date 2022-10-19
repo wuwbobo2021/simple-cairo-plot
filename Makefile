@@ -16,16 +16,19 @@ MKDIR = mkdir
 CP = copy
 RM = del /Q
 RMDIR = rmdir /S /Q
+CPPFLAGS += -mwindows
+run_demo = $(target_demo)
 else
 MKDIR = mkdir -p
 CP = cp
 RM = rm -f
 RMDIR = rm -f -r
+run_demo = ./$(target_demo)
 endif
 
 cpp_options = -I$(includedir) `pkg-config gtkmm-3.0 --cflags --libs` -latomic $(CPPFLAGS)
 headers = $(foreach h, $(wildcard *.h), $(includedir_subdir)/$(h))
-objects = circularbuffer.o plottingarea.o recorder.o frontend.o
+objects = circularbuffer.o plotarea.o recorder.o frontend.o
 
 $(target): $(headers) $(objects) $(libdir)
 	$(AR) rcs $@ $(objects)
@@ -46,9 +49,9 @@ $(includedir_subdir)/%.h: $(includedir_subdir) %.h
 	$(CP) $(@F) $<
 
 demo: $(target_demo)
-	./$<
+	$(run_demo)
 
 .PHONY: clean
 clean:
 	-$(RMDIR) lib include
-	-$(RM) *.o target_demo
+	-$(RM) *.o $(target_demo)

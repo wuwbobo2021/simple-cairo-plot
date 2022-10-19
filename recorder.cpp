@@ -10,6 +10,7 @@
 #include <iomanip> //put_time()
 #include <fstream>
 #include <sstream>
+
 #include <glibmm/timer.h>
 #include <gtkmm/separator.h>
 
@@ -23,14 +24,14 @@ namespace SimpleCairoPlot {
 
 Recorder::Recorder():
 	Box(Gtk::ORIENTATION_VERTICAL, 5),
-	scrollbox(Gtk::ORIENTATION_HORIZONTAL, PlottingArea::Border_X_Left - 2),
+	scrollbox(Gtk::ORIENTATION_HORIZONTAL, PlotArea::Border_X_Left - 2),
 	scrollbar(Gtk::Adjustment::create(0, 0, 200, 1, 200, 200), Gtk::ORIENTATION_HORIZONTAL),
 	box_var_names(Gtk::ORIENTATION_HORIZONTAL, 20)
 {}
 
 Recorder::Recorder(std::vector<VariableAccessPtr>& ptrs, unsigned int buf_size):
 	Box(Gtk::ORIENTATION_VERTICAL, 5),
-	scrollbox(Gtk::ORIENTATION_HORIZONTAL, PlottingArea::Border_X_Left - 2),
+	scrollbox(Gtk::ORIENTATION_HORIZONTAL, PlotArea::Border_X_Left - 2),
 	scrollbar(Gtk::Adjustment::create(0, 0, 200, 1, 200, 200), Gtk::ORIENTATION_HORIZONTAL),
 	box_var_names(Gtk::ORIENTATION_HORIZONTAL, 20)
 {
@@ -47,13 +48,13 @@ void Recorder::init(std::vector<VariableAccessPtr>& ptrs, unsigned int buf_size)
 		throw std::invalid_argument("Recorder::init(): requires at least 1 VariableAccessPtr.");
 	
 	this->var_cnt = ptrs.size();
-	this->flag_spike_check = (buf_size > Plot_Data_Amount_Limit_Min);
+	this->flag_spike_check = (buf_size > PlotArea::Plot_Data_Amount_Limit_Min);
 	
 	bool except_caught = false;
 	try {
 		this->ptrs = new VariableAccessPtr[var_cnt];
 		this->bufs = new CircularBuffer[var_cnt];
-		this->areas = new PlottingArea[var_cnt];
+		this->areas = new PlotArea[var_cnt];
 		this->eventboxes = new Gtk::EventBox[var_cnt];
 		this->var_labels = new Gtk::Label[var_cnt];
 		
@@ -74,31 +75,31 @@ void Recorder::init(std::vector<VariableAccessPtr>& ptrs, unsigned int buf_size)
 		throw std::bad_alloc();
 	}
 	
-	sigc::slot<bool, GdkEventButton*> slot_press = sigc::mem_fun(*this, &Recorder::on_button_press);
+	sigc::slot<bool, GdkEventButton*> slot_click = sigc::mem_fun(*this, &Recorder::on_mouse_click);
 	sigc::slot<bool, GdkEventMotion*> slot_motion = sigc::mem_fun(*this, &Recorder::on_motion_notify);
 	sigc::slot<bool, GdkEventCrossing*> slot_leave = sigc::mem_fun(*this, &Recorder::on_leave_notify);
 	
 	for (unsigned int i = 0; i < this->var_cnt; i++) {
 		if (this->flag_spike_check)
 			this->bufs[i].set_spike_check_ref_min(100.0 * pow(0.1, this->ptrs[i].precision_csv));
-
-		this->areas[i].axis_y_unit_name = this->ptrs[i].unit_name;
-		this->areas[i].color_plot = this->ptrs[i].color_plot;
+		
+		this->areas[i].set_axis_y_unit_name(this->ptrs[i].unit_name);
+		this->areas[i].set_plot_color(this->ptrs[i].color_plot);
 		
 		this->eventboxes[i].add(this->areas[i]);
 		this->eventboxes[i].set_events(Gdk::POINTER_MOTION_MASK | Gdk::LEAVE_NOTIFY_MASK);
-		this->eventboxes[i].signal_button_press_event().connect(slot_press);
+		this->eventboxes[i].signal_button_release_event().connect(slot_click);
 		this->eventboxes[i].signal_motion_notify_event().connect(slot_motion);
 		this->eventboxes[i].signal_leave_notify_event().connect(slot_leave);
 		this->pack_start(this->eventboxes[i], Gtk::PACK_EXPAND_WIDGET);
 		
 		if (i < this->var_cnt - 1) {
-			this->areas[i].option_show_axis_x_values = false;
+			this->areas[i].set_option_show_axis_x_values(false);
 			
 			Gtk::Separator* separator = Gtk::manage(new Gtk::Separator);
 			Gtk::Box* box_separator = Gtk::manage(new Gtk::Box(Gtk::ORIENTATION_HORIZONTAL));
 			box_separator->pack_start(*separator, Gtk::PACK_SHRINK);
-			separator->set_size_request(PlottingArea::Border_X_Left, 2);
+			separator->set_size_request(PlotArea::Border_X_Left, 2);
 			this->pack_start(*box_separator, Gtk::PACK_SHRINK);
 		}	
 		
@@ -185,6 +186,7 @@ void Recorder::stop()
 void Recorder::clear()
 {
 	this->flag_full = false;
+	this->flag_sync_buf_plot = true;
 	for (unsigned int i = 0; i < this->var_cnt; i++)
 		this->bufs[i].clear(true);
 }
@@ -310,8 +312,8 @@ bool Recorder::set_redraw_interval(unsigned new_redraw_interval)
 {
 	if (new_redraw_interval == 0) return false;
 	this->redraw_interval = new_redraw_interval;
-	if (this->redraw_interval < 20)
-		this->redraw_interval = 20; //maximum graph refresh rate: 50 Hz
+	if (this->redraw_interval < 40)
+		this->redraw_interval = 40; //maximum graph refresh rate: 25 Hz
 	return true;
 }
 
@@ -347,8 +349,8 @@ bool Recorder::set_index_unit(float unit)
 		this->axis_x_unit_name = sst.str() + " s";
 	}
 	
-	this->areas[this->var_cnt - 1].axis_x_unit_name
-		= (this->flag_axis_x_unique_unit? "" : this->axis_x_unit_name);
+	this->areas[this->var_cnt - 1].set_axis_x_unit_name
+		(this->flag_axis_x_unique_unit? "" : this->axis_x_unit_name);
 	
 	this->label_axis_x_unit.set_visible(this->flag_axis_x_unique_unit);
 	if (this->flag_axis_x_unique_unit)
@@ -357,16 +359,14 @@ bool Recorder::set_index_unit(float unit)
 	return true;
 }
 
-bool Recorder::set_axis_x_range(AxisRange range)
+bool Recorder::set_axis_x_range(IndexRange range)
 {
 	if (! this->var_cnt) return false;
 	
-	range.set_int();
-	if (range.length() > this->data_range_max().length()) return false;
-	
-	if (range.length() == 0)
+	if (range.count() > this->data_range_max().count()) return false;
+	if (!range || range.count() < 2)
 		range = this->axis_x_range();
-	else if (range.length() == this->data_count_max())
+	else if (range.count() == this->data_count_max() + 1) //careless of the caller
 		range.set(0, range.max() - 1);
 	else
 		range.fit_by_range(this->data_range_max());
@@ -375,17 +375,17 @@ bool Recorder::set_axis_x_range(AxisRange range)
 		this->areas[i].set_range_x(range);
 	
 	if (this->flag_recording && !this->flag_full)
-		this->auto_set_scroll_mode
-			(Gtk::Adjustment::create(range.min(), 0, this->data_range().max(), 1, 1, range.length()));
+		this->auto_set_scroll_mode(Gtk::Adjustment::create(
+			range.min(), 0, this->data_range().max(), 1, 1, range.length()));
 	
 	this->refresh_areas(true, true);
 	
-	this->flag_refresh_scroll = true; //tells refresh_indicators() that the scroll needs to be updated
+	this->flag_refresh_scroll = true; //tells refresh_indicators() the scroll needs to be updated
 	this->dispatcher_refresh_indicators.emit();
 	return true;
 }
 
-bool Recorder::set_axis_y_range(unsigned int index, AxisRange range)
+bool Recorder::set_axis_y_range(unsigned int index, ValueRange range)
 {
 	if (index > this->var_cnt - 1) return false;
 	return this->areas[index].set_range_y(range);
@@ -394,7 +394,7 @@ bool Recorder::set_axis_y_range(unsigned int index, AxisRange range)
 bool Recorder::set_axis_y_range_length_min(unsigned int index, float length_min)
 {
 	if (index > this->var_cnt - 1) return false;
-	return this->areas[index].set_axis_y_range_length_min(length_min);
+	return this->areas[index].set_range_y_length_min(length_min);
 }
 
 bool Recorder::set_axis_divider(unsigned int x_div, unsigned int y_div)
@@ -408,7 +408,7 @@ bool Recorder::set_axis_divider(unsigned int x_div, unsigned int y_div)
 void Recorder::set_option_fixed_axis_scale(bool set)
 {
 	for (unsigned int i = 0; i < this->var_cnt; i++)
-		this->areas[i].option_fixed_scale = set;
+		this->areas[i].set_option_fixed_scale(set);
 }
 
 void Recorder::set_option_stop_on_full(bool set)
@@ -426,44 +426,44 @@ void Recorder::set_option_auto_extend_range_x(bool set)
 void Recorder::set_option_auto_set_range_y(unsigned int index, bool set)
 {
 	if (index > this->var_cnt - 1) return;
-	this->areas[index].option_auto_set_range_y = set;
+	this->areas[index].set_option_auto_set_range_y(set);
 		
 }
 
 void Recorder::set_option_auto_set_zero_bottom(unsigned int index, bool set)
 {
 	if (index > this->var_cnt - 1) return;
-	this->areas[index].option_auto_set_zero_bottom = set;
+	this->areas[index].set_option_auto_set_zero_bottom(set);
 }
 
 void Recorder::set_option_show_axis_x_values(bool set)
 {
 	if (! this->var_cnt) return;
-	this->areas[this->var_cnt - 1].option_auto_set_range_y = set;
+	this->areas[this->var_cnt - 1].set_option_auto_set_range_y(set);
 }
 
 void Recorder::set_option_axis_x_int_values(bool set)
 {
 	if (! this->var_cnt) return;
-	this->areas[this->var_cnt - 1].option_axis_x_int_values = set;
+	this->areas[this->var_cnt - 1].set_option_axis_x_int_values(set);
 }
 
 void Recorder::set_option_show_axis_y_values(bool set)
 {
 	for (unsigned int i = 0; i < this->var_cnt; i++)
-		this->areas[i].option_show_axis_y_values = set;
+		this->areas[i].set_option_show_axis_y_values(set);
 }
 
 void Recorder::set_option_show_average_line(unsigned int index, bool set)
 {
 	if (index > this->var_cnt - 1) return;
-	this->areas[index].option_show_average_line = set;
+	this->areas[index].set_option_show_average_line(set);
 }
 
 void Recorder::set_option_anti_alias(bool set)
 {
 	for (unsigned int i = 0; i < this->var_cnt; i++)
-		this->areas[i].option_anti_alias = set;
+		this->areas[i].set_option_anti_alias(set);
 }
 
 /*------------------------------ private functions ------------------------------*/
@@ -520,7 +520,7 @@ void Recorder::refresh_loop()
 		if (steady_clock::now() >= t_last_refresh + milliseconds(this->redraw_interval)) {
 			// refresh graph view
 			t_last_refresh = steady_clock::now();
-			this->refresh_areas();
+			this->refresh_areas(); //auto-refresh mode of areas aren't set, combining them into one thread
 		}
 		
 		if (!this->flag_full || this->flag_cursor)
@@ -538,7 +538,7 @@ void Recorder::refresh_indicators() //not thread-safe
 	if (this->flag_full && !this->flag_refresh_scroll) return;
 	
 	Glib::RefPtr<Gtk::Adjustment> adj = this->scrollbar.get_adjustment();
-	AxisRange range_x = this->axis_x_range();
+	IndexRange range_x = this->axis_x_range();
 	unsigned int val, upper = this->data_range().max();
 	
 	if (this->flag_goto_end && !flag_extend && range_x.max() < upper)
@@ -546,7 +546,7 @@ void Recorder::refresh_indicators() //not thread-safe
 	else
 		val = range_x.min();
 	
-	// tell on_scroll() don't refresh areas again if the range has been moved by PlottingArea
+	// tell on_scroll() don't refresh areas again if the range has been moved by PlotArea
 	this->flag_refresh_scroll = true;
 	adj->configure(val, 0, upper, 1, range_x.length() / 2, range_x.length());
 	this->flag_refresh_scroll = false;
@@ -562,30 +562,30 @@ void Recorder::on_scroll() //on scrollbar.signal_value_changed()
 		Glib::RefPtr<Gtk::Adjustment> adj = this->scrollbar.get_adjustment();
 		unsigned int val = adj->get_value();
 		for (unsigned int i = 0; i < this->var_cnt; i++)
-			this->areas[i].set_range_x(AxisRange(val, val + adj->get_page_size()));
+			this->areas[i].set_range_x(IndexRange(val, val + adj->get_page_size()));
 	}
 	
 	if (!this->flag_recording || this->interval >= 100)
 		this->refresh_areas(true);
 }
 
-bool Recorder::on_button_press(GdkEventButton* event)
+bool Recorder::on_mouse_click(GdkEventButton* event)
 {
 	if (this->data_count() == 0) return true;
-	if (event->type != GDK_BUTTON_PRESS) return true;
+	if (event->type != GDK_BUTTON_RELEASE) return true;
 	if (event->button != 1 && event->button != 3) return true;
 	
 	bool zoom_in = (event->button == 1); //is left button?
 	if (!zoom_in && this->flag_extend) return true;
 	
-	AxisRange range_scr_x(PlottingArea::Border_X_Left,
+	AxisRange range_scr_x(PlotArea::Border_X_Left,
 	                      this->areas[0].get_allocation().get_width());
 	
 	AxisRange range_x = this->axis_x_range();
 	unsigned int x = range_scr_x.map(event->x, range_x);
 	
 	if (zoom_in) {
-		range_x.scale(0.5, x); range_x.set_int();
+		range_x.scale(0.5, x); range_x = UIntRange(range_x);
 		if (range_x.length() < 2) return true;
 	} else
 		range_x.scale(2, x);
@@ -610,14 +610,14 @@ bool Recorder::auto_set_scroll_mode(Glib::RefPtr<Gtk::Adjustment> adj) //default
 		this->flag_goto_end = (adj->get_value() + adj->get_page_size() >= adj->get_upper());
 	
 	for (unsigned int i = 0; i < this->var_cnt; i++)
-		this->areas[i].option_auto_goto_end = this->flag_goto_end;
+		this->areas[i].set_option_auto_goto_end(this->flag_goto_end);
 	
 	if (this->flag_goto_end) {
 		bool wide_enough = (adj->get_page_size() >= adj->get_upper());
 		
 		this->flag_extend = this->option_extend_index_range && wide_enough;
 		for (unsigned int i = 0; i < this->var_cnt; i++)
-			this->areas[i].option_auto_extend_range_x = this->flag_extend;
+			this->areas[i].set_option_auto_extend_range_x(this->flag_extend);
 	} else
 		this->flag_extend = false;
 	
@@ -632,7 +632,7 @@ inline std::string float_to_str(float val, std::ostringstream& oss)
 
 bool Recorder::on_motion_notify(GdkEventMotion* motion_event)
 {
-	this->flag_cursor = (this->cursor_x >= PlottingArea::Border_X_Left);
+	this->flag_cursor = (this->cursor_x >= PlotArea::Border_X_Left);
 	this->cursor_x = motion_event->x;
 	this->refresh_var_labels();
 	return true;
@@ -649,7 +649,7 @@ void Recorder::refresh_var_labels()
 {
 	float x; bool show_values = false;
 	if (this->flag_cursor) {
-		AxisRange range_scr_x(PlottingArea::Border_X_Left,
+		AxisRange range_scr_x(PlotArea::Border_X_Left,
 		                      this->areas[0].get_allocation().get_width());
 		x = range_scr_x.map(this->cursor_x, this->axis_x_range());
 		show_values = this->data_range().contain(x);
