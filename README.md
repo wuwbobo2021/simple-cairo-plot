@@ -22,7 +22,7 @@ For 32-bit Windows:
 2. Download `msys2-i686-latest.sfx.exe`, place it under a short path and extract it;
 3. Follow the instruments in <https://wiki.gnome.org/Projects/gtkmm/MSWindows>.
 
-Add `<msys32>/bin` to environment variable `PATH`, then MSYS2-compiled programs can be executed outside MSYS2 shell. Add linker flag `-mwindows` to hide the console window.
+Add `<msys32>/mingw32/bin` to environment variable `PATH`, then MSYS2-compiled programs can be executed outside MSYS2 shell. Add linker flag `-mwindows` to hide the console window.
 
 ## Classes
 ### ValueRange, IndexRange
