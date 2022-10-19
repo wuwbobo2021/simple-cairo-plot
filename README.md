@@ -34,7 +34,7 @@ Where the data should be pushed back to update the graph in `PlottingArea`. Afte
 Optimized algorithms calculating min/max/average values are implemented here, and spike detection is enabled by default so that spikes can be treated specially to avoid flickering of spikes when the x-axis index step for data plotting is adjusted for a wide index range.
 
 ### PlotArea
-Implements a graph box for a single buffer without scroll box. It only supports a single variable, and values should be pushed into its buffer manually. Axis ranges can be set either automatically or manually, and the grid with tick values can be either fixed or auto-adjusted. For x-axis index range, goto-end mode and extend mode are available.
+Implements a graph box for a single buffer without scroll box. It only supports a single variable, and values should be pushed into its buffer manually. Axis ranges can be set either automatically or manually, and the grid with tick values can be either fixed or auto-adjusted. For x-axis index range, goto-end mode and extend mode are available. Choose extend mode (without showing average line) for best performance.
 
 Notice: `PlotArea` cannot receive button press event and button release event by itself. If needed, put it inside a `Gtk::EventBox` which handles these events.
 
