@@ -10,7 +10,7 @@ make demo
 ```
 You can modify `demo.cpp` to change the wave form and make other adjustments, like speed, buffer size or axis-y range.
 
-## Install
+Install:
 ```
 sudo make -e prefix=/usr
 ```
@@ -39,9 +39,9 @@ Implements a graph box for a single buffer without scroll box. It only supports 
 Notice: `PlotArea` cannot receive button press event and button release event by itself. If needed, put it inside a `Gtk::EventBox` which handles these events.
 
 ### VariableAccessPtr
-Pointer of an variable or a function which has a `void*` parameter and returns a `float` value. Pointer of a member function of class `T` which returns a `float` value and has no extra parameters can be created by:
+Pointer of an variable or a function which has a `void*` parameter and returns a `float` value. Its efficiency is close to direct access when pointing to a memory address, and is better than std::function wrapper when pointing to a member function. Pointer of a member function which returns a `float` value and has no extra parameters can be created by:
 ```
-MemberFuncPtr<typename T, float (T::*F)()>(T* pobj)
+MemberFuncPtr<ClassName, &ClassName::function_name>(&object_name)
 ```
 
 ### Recorder
@@ -58,4 +58,5 @@ Notice:
 
 ## Known Issues
 1. The record process of `Recorder` can be interrupted by the environment, this causes missing of data and unsmooth curves on the graph. It works well on XFCE, and is acceptable on GNOME and KDE, but the unsmooth effect can be significant on Windows that the delay can sometimes exceed 20 ms. Limited by software timer accuracy, it is IMPOSSIBLE for `Recorder` to keep its data sampling frequency higher than 10 kHz (0.1 ms interval). The higher the frequency, the lower the stability.
-2. It has not been migrated to `gtkmm-4.0`, partly because newest distributions of Debian and Ubuntu has not provided this version of the library.
+2. Double-buffering of the plot area has been disabled to bring down CPU usage, but it might cause flickering effect if large amount of data is to be shown.
+3. It has not been migrated to `gtkmm-4.0`, partly because newest distributions of Debian and Ubuntu has not provided this version of the library.

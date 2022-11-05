@@ -79,11 +79,6 @@ void PlotArea::refresh(bool forced_check_range_y, bool forced_adapt, bool forced
 		throw std::runtime_error("PlotArea::refresh(): not initialized.");
 	
 	if (forced_sync) this->flag_sync = true;
-	if (! this->get_visible()) {
-		if (option_auto_set_range_y)
-			this->flag_adapt = this->flag_check_range_y = true;
-		return;
-	}
 	if (flag_drawing) return;
 	
 	if (this->option_auto_goto_end) {
@@ -362,17 +357,18 @@ void PlotArea::draw(Cairo::RefPtr<Cairo::Context> cr)
 	                    || !this->param.reuse_graph(this->buf_plot.get_param()));
 	
 	Glib::RefPtr<Gdk::DrawingContext> drawing_context;
-	if (!flag_clean) {
+	if (! flag_clean) {
 		// create cairo context (optimized). the frame isn't double-buffered because this
 		// is not a top-level Gdk::Window (see reference of Gdk::Window::begin_draw_frame()).
 		cairo_rectangle_int_t rect = {0, 0, (int)alloc.get_width(), (int)alloc.get_height()};
 		drawing_context = this->get_window()->begin_draw_frame(Cairo::Region::create(rect));
 		cr = drawing_context->get_cairo_context();
-	} else { //set background color (the widget's default background-color isn't known...)
-		set_cr_color(cr, this->color_back); cr->paint();
 	}
 	
-	if (!flag_clean && flag_redraw) {
+	if (flag_clean || this->flag_sync) {
+		// fill back color even if it's clean, because the widget's default back color isn't known...
+		set_cr_color(cr, this->color_back); cr->paint();
+	} else if (flag_redraw) {
 		// do erasing instead of filling with back color to reduce CPU usage
 		set_cr_color(cr, this->color_back); cr->set_antialias(Cairo::ANTIALIAS_NONE);
 		cr->set_line_width(this->buf_plot.get_param().option_anti_alias? 2.0 : 1.0);
@@ -582,7 +578,7 @@ void PlotBuffer::init(CircularBuffer* src, unsigned int cnt_limit)
 		except_caught = true;
 	}
 	if (except_caught || this->buf_spike == NULL || this->buf_cr == NULL) {
-		if (this->buf_spike) {delete this->buf_spike; this->buf_spike = NULL;}
+		if (this->buf_spike) {delete[] this->buf_spike; this->buf_spike = NULL;}
 		throw std::bad_alloc();
 	}
 	
@@ -605,8 +601,8 @@ void PlotBuffer::init(CircularBuffer* src, unsigned int cnt_limit)
 
 PlotBuffer::~PlotBuffer()
 {
-	if (this->buf_spike) delete this->buf_spike;
-	if (this->buf_cr) delete this->buf_cr;
+	if (this->buf_spike) delete[] this->buf_spike;
+	if (this->buf_cr) delete[] this->buf_cr;
 }
 
 bool PlotBuffer::sync(const PlotParam& param, bool forced_sync)
@@ -618,26 +614,25 @@ bool PlotBuffer::sync(const PlotParam& param, bool forced_sync)
 	
 	this->flag_redraw = forced_sync || !param.reuse_graph(this->param);
 	
-	IndexRange range_data = param.data_range_x(),
-	           range_data_pre = this->param.data_range_x();
-	range_data.step_align_with(range_data_pre, step);
+	IndexRange range_data = param.data_range_x();
+	range_data.step_align_with(this->range_data, step);
 	
 	IndexRange range_data_l, range_data_r; unsigned int cur_buf_l, cur_buf_r;
 	bool flag_reuse_data = true;
 	
 	// calculate the ranges of new data to be loaded
-	if (this->flag_redraw || range_data.max() > range_data_pre.max()) {
+	if (this->flag_redraw || range_data.max() > this->range_data.max()) {
 		if (param.alloc_x_step() != this->param.alloc_x_step())
 			this->buf_cr_refresh_x(param.alloc_x_step());
 		
 		// check if y-axis data can be reused
 		if (!forced_sync && param.reuse_data(this->param)) {
-			if (range_data.min() < range_data_pre.min()) {
-				range_data_l.set(range_data.min(), range_data_pre.min() - 1);
+			if (range_data.min() < this->range_data.min()) {
+				range_data_l.set(range_data.min(), this->range_data.min() - 1);
 				cur_buf_l = this->cur_move
 					(this->cur_buf_cr, -(long int)range_data_l.count_by_step(step));
 			}
-			range_data_r.set(range_data_pre.max() + 1, range_data.max());
+			range_data_r.set(this->range_data.max() + 1, range_data.max());
 			if (range_data_r) cur_buf_r = this->cur_move(this->cur_buf_cr, this->cnt_buf_cr);
 		} else {
 			flag_reuse_data = false;
@@ -646,8 +641,9 @@ bool PlotBuffer::sync(const PlotParam& param, bool forced_sync)
 	}
 	
 	this->param = param;
-	if (param.index_step > 1 && (range_data_l || range_data_r))
+	if (param.index_step > 1 && (flag_redraw || range_data_r))
 		this->buf_cr_spike_sync();
+	
 	this->source->unlock();
 	
 	if (range_data_l) this->buf_cr_load(cur_buf_l, range_data_l);
@@ -655,7 +651,7 @@ bool PlotBuffer::sync(const PlotParam& param, bool forced_sync)
 	
 	if (flag_reuse_data)
 		this->cur_buf_cr = this->cur_move(this->cur_buf_cr,
-			subtract(range_data.min(), range_data_pre.min()) / (int)this->param.index_step);
+			subtract(range_data.min(), this->range_data.min()) / (int)this->param.index_step);
 	else
 		this->cur_buf_cr = 0;
 	this->cnt_buf_cr = range_data.count_by_step(this->param.index_step);
@@ -665,6 +661,7 @@ bool PlotBuffer::sync(const PlotParam& param, bool forced_sync)
 		this->cnt_ext = range_data_r.count_by_step(this->param.index_step); //0 if range_data_r is empty
 	}
 	
+	this->range_data = range_data;
 	return true;
 }
 
@@ -691,18 +688,22 @@ void PlotBuffer::buf_cr_spike_sync()
 {
 	unsigned int cnt_sp = this->source->get_spikes
 		(this->source->range_to_rel(this->param.range_x), this->buf_spike);
-	if (cnt_sp == 0) return;
+	if (cnt_sp < 2) return;
 	
 	AxisRange alloc_x = this->param.alloc_x(), alloc_y = this->param.alloc_y();
 	float x_step = alloc_x.length() / this->param.range_x.length();
 	
 	unsigned long int i; float x, y;
 	this->i_buf_cr_spike = 1;
-	for (unsigned int i_sp = 0; i_sp < cnt_sp; i_sp++) {
+	for (unsigned int i_sp = 0; i_sp < cnt_sp - 2; i_sp++) {
 		i = this->buf_spike[i_sp];
 		x = this->param.range_x.map(i, alloc_x);
 		y = this->param.range_y.map_reverse(this->source->abs_index_item(i), alloc_y);
+		
+		// "spikes" are actually turning points, don't draw if it wouldn't turn back soon
+		if (this->buf_spike[i_sp + 2] > i + 2*this->param.index_step) continue;
 		this->buf_cr_spike_add(x, y);
+		
 		x += x_step;
 		y = this->param.range_y.map_reverse(this->source->abs_index_item(i + 1), alloc_y);
 		this->buf_cr_spike_add(x, y);

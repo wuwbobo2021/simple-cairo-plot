@@ -68,7 +68,7 @@ public:
 	
 	// get_spikes() locks for reading
 	void set_spike_check_ref_min(float val);
-	unsigned int get_spikes(unsigned int* buf_out);
+	unsigned int get_spikes(unsigned int* buf_out); //short naming, actually turning points
 	unsigned int get_spikes(IndexRange range, unsigned int* buf_out);
 	unsigned int get_spikes(IndexRange range, unsigned long int* buf_out);
 	
@@ -197,6 +197,8 @@ inline unsigned long int CircularBuffer::index_to_abs(unsigned int i) const
 inline unsigned int CircularBuffer::index_to_rel(unsigned long int i) const
 {
 	unsigned long int cnt_ovr = this->cnt_overwrite;
+	if (i >= cnt_ovr + this->cnt)
+		return this->cnt - 1;
 	if (i >= cnt_ovr)
 		return i - cnt_ovr;
 	else
@@ -304,7 +306,7 @@ inline void CircularBuffer::unlock()
 	if (this->read_lock_counter.load(std::memory_order_acquire) > 0) {
 		int counter = --this->read_lock_counter;
 		if (counter > 0) return;
-		if (counter < 0) this->read_lock_counter = 0; //no effect if lock/unlock are paired
+		if (counter < 0) this->read_lock_counter = 0; //this shouldn't happen if lock/unlock are paired
 	}
 	this->flag_lock.clear(std::memory_order_release);
 }

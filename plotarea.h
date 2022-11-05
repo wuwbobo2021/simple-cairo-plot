@@ -80,6 +80,7 @@ private:
 	cairo_path_data_t* buf_cr = NULL; unsigned int buf_cr_size, i_buf_cr = 1;
 	cairo_path_data_t* buf_cr_spike = NULL; unsigned int buf_cr_spike_size, i_buf_cr_spike = 1;
 	
+	IndexRange range_data; //loaded data range in the buffer (absolute index)
 	unsigned int cur_buf_cr = 0, cnt_buf_cr = 0;
 	unsigned int cur_ext = 0, cnt_ext = 0; //don't care if flag_redraw or forced_redraw is set
 	

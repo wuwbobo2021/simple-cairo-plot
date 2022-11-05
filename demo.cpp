@@ -26,9 +26,6 @@ public:
 
 Demo::Demo()
 {
-	// this component requires pointers of user-defined type VariableAccessPtr,
-	// its performance is close to direct access when pointing to a memory address,
-	// and is better than std::function wrapper when pointing to a member function.
 	std::vector<VariableAccessPtr> vect_ptr;
 	VariableAccessPtr ptr1 = MemberFuncPtr<Demo, &Demo::read_var1>(this),
 	                  ptr2 = MemberFuncPtr<Demo, &Demo::read_var2>(this);
@@ -76,4 +73,3 @@ int main(int argc, char** argv)
 	demo.run();
 	return 0;
 }
-
