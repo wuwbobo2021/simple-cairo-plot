@@ -27,7 +27,7 @@ RMDIR = rmdir /S /Q
 run_demo = $(target_demo)
 endif
 
-CXXFLAGS = -I$(includedir) `pkg-config gtkmm-3.0 --cflags --libs` -latomic $(OPT)
+CXXFLAGS = -I$(includedir) `pkg-config gtkmm-3.0 --cflags --libs` $(OPT)
 
 # for demo program
 LDFLAGS = -L$(libdir) -lsimple-cairo-plot $(CXXFLAGS)
