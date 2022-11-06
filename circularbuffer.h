@@ -7,6 +7,7 @@
 
 #include <stdexcept>
 #include <thread> //this_thread::sleep_for()
+#include <mutex>
 #include <atomic> //atomic_flag, atomic_uint
 
 #include <simple-cairo-plot/axisrange.h> //<cmath> included
@@ -102,13 +103,12 @@ private:
 		IndexRange range_i_min_max_scan,
 		           range_i_min_max; //two indexes stored as a range for convenience
 		ValueRange range_min_max = ValueRange(0, 0);
-	};
+	} last_min_max_scan;
 	struct AvCalcInfo {
 		IndexRange range_i_av_val;
 		float av_val = 0;
-	};
-	std::atomic<MinMaxScanInfo> last_min_max_scan;
-	std::atomic<AvCalcInfo> last_av_calc;
+	} last_av_calc;
+	std::mutex lock_info;
 	
 	// used to avoid multithreaded conflicts
 	std::atomic_flag flag_lock = ATOMIC_FLAG_INIT; //atomic_flag is not implemented with mutex

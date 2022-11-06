@@ -57,6 +57,6 @@ Notice:
 2. Through function `recorder()` you can get a reference of the `Recorder` object as a Gtk widget after the window is opened, but the object itself will be destructed when the window is being closed.
 
 ## Known Issues
-1. The record process of `Recorder` can be interrupted by the environment, this causes missing of data and unsmooth curves on the graph. It works well on XFCE, and is acceptable on GNOME and KDE, but the unsmooth effect can be significant on Windows that the delay can sometimes exceed 20 ms. Limited by software timer accuracy, it is IMPOSSIBLE for `Recorder` to keep its data sampling frequency higher than 10 kHz (0.1 ms interval). The higher the frequency, the lower the stability.
+1. The record process of `Recorder` can be interrupted by the environment, this causes missing of data and unsmooth curves on the graph. It works well on XFCE, and is acceptable on GNOME and KDE, but the interruption can be significant on Windows that the delay can sometimes exceed 20 ms (even worse under power-saving mode). Limited by software timer accuracy, it is IMPOSSIBLE for `Recorder` to keep its data sampling frequency higher than 10 kHz (0.1 ms interval). The higher the frequency, the lower the stability.
 2. Double-buffering of the plot area has been disabled to bring down CPU usage, but it might cause flickering effect if large amount of data is to be shown.
 3. It has not been migrated to `gtkmm-4.0`, partly because newest distributions of Debian and Ubuntu has not provided this version of the library.

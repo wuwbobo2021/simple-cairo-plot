@@ -232,7 +232,11 @@ ValueRange CircularBuffer::get_value_range(IndexRange range, unsigned int chk_st
 	range = this->range_to_abs(range);
 	if (chk_step == 0 || chk_step >= this->cnt / 2) chk_step = 1;
 	
-	MinMaxScanInfo last = this->last_min_max_scan;
+	MinMaxScanInfo last;
+	this->lock_info.lock();
+	last = this->last_min_max_scan;
+	this->lock_info.unlock();
+	
 	if (last.range_i_min_max_scan.contain(range) && range.contain(last.range_i_min_max))
 		return last.range_min_max;
 	
@@ -277,7 +281,10 @@ ValueRange CircularBuffer::get_value_range(IndexRange range, unsigned int chk_st
 	last.range_i_min_max.set(imin, imax);
 	last.range_min_max.set(min, max);
 	
+	this->lock_info.lock();
 	this->last_min_max_scan = last;
+	this->lock_info.unlock();
+	
 	return last.range_min_max;
 }
 
@@ -289,9 +296,13 @@ float CircularBuffer::get_average(IndexRange range, unsigned int chk_step)
 	range = this->range().cut_range(range);
 	range = this->range_to_abs(range);
 	
-	AvCalcInfo last = this->last_av_calc;
-	if (range == last.range_i_av_val)
-		return last.av_val;
+	if (range == this->last_av_calc.range_i_av_val)
+		return this->last_av_calc.av_val;
+	
+	AvCalcInfo last;
+	this->lock_info.lock();
+	last = this->last_av_calc;
+	this->lock_info.unlock();
 	
 	this->lock();
 	
@@ -362,7 +373,10 @@ float CircularBuffer::get_average(IndexRange range, unsigned int chk_step)
 	last.av_val = sum / cnt;
 	last.range_i_av_val = range;
 	
+	this->lock_info.lock();
 	this->last_av_calc = last;
+	this->lock_info.unlock();
+	
 	return last.av_val;
 }
 
