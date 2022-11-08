@@ -181,6 +181,10 @@ void Recorder::stop()
 		delete this->thread_record; this->thread_record = NULL;
 		delete this->thread_refresh; this->thread_refresh = NULL;
 	}
+	
+	// make sure the last frame kept on screen is correct
+	this->flag_sync_buf_plot = true;
+	this->refresh_areas(true, true);
 }
 
 void Recorder::clear()
@@ -574,6 +578,7 @@ bool Recorder::on_mouse_click(GdkEventButton* event)
 	if (this->data_count() == 0) return true;
 	if (event->type != GDK_BUTTON_RELEASE) return true;
 	if (event->button != 1 && event->button != 3) return true;
+	if (event->x < PlotArea::Border_X_Left - 2) return true;
 	
 	bool zoom_in = (event->button == 1); //is left button?
 	if (!zoom_in && this->flag_extend) return true;
@@ -590,11 +595,13 @@ bool Recorder::on_mouse_click(GdkEventButton* event)
 	} else
 		range_x.scale(2, x);
 	
-	if (range_x.length() <= this->data_range().max())
+	if (range_x.length() <= this->data_range().max()) {
 		range_x.fit_by_range(this->data_range());
-	else {
+		if (this->flag_goto_end && range_scr_x.max() - event->x < 50)
+			range_x.max_move_to(this->data_range().max());
+	} else {
 		range_x.fit_by_range(this->data_range_max());
-		if (zoom_in && range_x.max() > this->data_range().max())
+		if (zoom_in)
 			range_x.min_move_to(0);
 	}
 	

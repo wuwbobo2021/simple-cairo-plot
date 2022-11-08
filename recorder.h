@@ -200,7 +200,7 @@ private:
 	sigc::signal<void()> sig_full;
 	Glib::Dispatcher dispatcher_sig_full;
 	
-	bool flag_sync_buf_plot = false;
+	volatile bool flag_sync_buf_plot = false;
 	
 	float axis_x_unit = 0; bool flag_axis_x_unique_unit = false;
 	std::string axis_x_unit_name = "";

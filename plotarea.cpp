@@ -360,13 +360,16 @@ void PlotArea::draw(Cairo::RefPtr<Cairo::Context> cr)
 	if (! flag_clean) {
 		// create cairo context (optimized). the frame isn't double-buffered because this
 		// is not a top-level Gdk::Window (see reference of Gdk::Window::begin_draw_frame()).
+		Glib::RefPtr<Gdk::Window> gdk_window = this->get_window();
+		if (! gdk_window) return; //trying to avoid occasional segfault on Windows
 		cairo_rectangle_int_t rect = {0, 0, (int)alloc.get_width(), (int)alloc.get_height()};
-		drawing_context = this->get_window()->begin_draw_frame(Cairo::Region::create(rect));
-		cr = drawing_context->get_cairo_context();
+		drawing_context = gdk_window->begin_draw_frame(Cairo::Region::create(rect));
+		if (drawing_context) cr = drawing_context->get_cairo_context();
 	}
+	if (! cr) return;
 	
 	if (flag_clean || this->flag_sync) {
-		// fill back color even if it's clean, because the widget's default back color isn't known...
+		// fill back color even if flag_clean is set, because the widget's default color isn't known...
 		set_cr_color(cr, this->color_back); cr->paint();
 	} else if (flag_redraw) {
 		// do erasing instead of filling with back color to reduce CPU usage
@@ -573,7 +576,7 @@ void PlotBuffer::init(CircularBuffer* src, unsigned int cnt_limit)
 	bool except_caught = false;
 	try {
 		this->buf_spike = new unsigned long int[src->spike_buffer_size()];
-		this->buf_cr = new cairo_path_data_t[buf_cr_size + buf_cr_spike_size];
+		this->buf_cr = new cairo_path_data_t[this->buf_cr_size + buf_cr_spike_size];
 	} catch (std::bad_alloc) {
 		except_caught = true;
 	}
@@ -582,12 +585,12 @@ void PlotBuffer::init(CircularBuffer* src, unsigned int cnt_limit)
 		throw std::bad_alloc();
 	}
 	
-	this->buf_cr_spike = this->buf_cr + buf_cr_size;
+	this->buf_cr_spike = this->buf_cr + this->buf_cr_size;
 	
 	// initialize the cairo path buffer
 	cairo_path_data_t data_head;
 	data_head.header.type = CAIRO_PATH_LINE_TO; data_head.header.length = 2;
-	for (unsigned int i = 0; i < buf_cr_size; i += 2)
+	for (unsigned int i = 0; i < this->buf_cr_size; i += 2)
 		this->buf_cr[i] = data_head;
 	
 	// initialize the spike segment of the cairo path buffer
@@ -688,20 +691,21 @@ void PlotBuffer::buf_cr_spike_sync()
 {
 	unsigned int cnt_sp = this->source->get_spikes
 		(this->source->range_to_rel(this->param.range_x), this->buf_spike);
+	
+	this->i_buf_cr_spike = 1; //clears buf_cr_spike
 	if (cnt_sp < 2) return;
 	
 	AxisRange alloc_x = this->param.alloc_x(), alloc_y = this->param.alloc_y();
 	float x_step = alloc_x.length() / this->param.range_x.length();
 	
 	unsigned long int i; float x, y;
-	this->i_buf_cr_spike = 1;
 	for (unsigned int i_sp = 0; i_sp < cnt_sp - 2; i_sp++) {
 		i = this->buf_spike[i_sp];
 		x = this->param.range_x.map(i, alloc_x);
 		y = this->param.range_y.map_reverse(this->source->abs_index_item(i), alloc_y);
 		
 		// "spikes" are actually turning points, don't draw if it wouldn't turn back soon
-		if (this->buf_spike[i_sp + 2] > i + 2*this->param.index_step) continue;
+		if (this->buf_spike[i_sp + 2] >= i + 2*this->param.index_step) continue;
 		this->buf_cr_spike_add(x, y);
 		
 		x += x_step;
@@ -754,7 +758,7 @@ void PlotBuffer::cairo_load(const Cairo::RefPtr<Cairo::Context>& cr, bool forced
 	
 	cr->set_matrix(matrix_org);
 	if (this->param.index_step > 1)
-		cr_append(cr, this->buf_cr_spike, this->i_buf_cr_spike - 2 + 1);
+		cr_append(cr, this->buf_cr_spike, this->i_buf_cr_spike - 1);
 	
 	flag_redraw = false;
 }

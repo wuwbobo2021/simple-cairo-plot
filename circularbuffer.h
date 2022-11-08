@@ -199,7 +199,7 @@ inline unsigned int CircularBuffer::index_to_rel(unsigned long int i) const
 	unsigned long int cnt_ovr = this->cnt_overwrite;
 	if (i >= cnt_ovr + this->cnt)
 		return this->cnt - 1;
-	if (i >= cnt_ovr)
+	else if (i >= cnt_ovr)
 		return i - cnt_ovr;
 	else
 		return 0;
@@ -239,6 +239,7 @@ inline float& CircularBuffer::abs_index_item(unsigned long int i) const
 
 inline float& CircularBuffer::last_item() const
 {
+	if (this->cnt == 0) return this->item(0);
 	return this->item(this->cnt - 1);
 }
 
@@ -367,9 +368,10 @@ inline void CircularBuffer::spike_check()
 	float ref = this->spike_check_av;
 	if (fabs(ref) < spike_check_ref_min)
 		ref = spike_check_ref_min;
+	if (!ref) ref = 1;
 	
-	float dd =  this->last_item() - this->buf[this->cnt - 2]
-	         - (this->buf[this->cnt - 2] - this->buf[this->cnt - 3]);
+	float dd =  this->item(this->cnt - 1) - this->item(this->cnt - 2)
+	         - (this->item(this->cnt - 2) - this->item(this->cnt - 3));
 	
 	if (spike_check_av != 0 && fabs(dd / ref) > 0.05)
 		this->buf_spike_push(this->count_overall() - 2);

@@ -29,7 +29,7 @@ Add `<msys32>\mingw32\bin` to environment variable `PATH`, then MSYS2-compiled p
 Closed range between two values. It supports many operations, including mapping of a given value to another range. All of it's functions are inlined. `ValueRange` is implemented by two `float` variables, while `IndexRange` is implemented by two `unsigned long int` variables. Implicit conversions between them are supported.
 
 ### CircularBuffer
-Where the data should be pushed back to update the graph in `PlottingArea`. After it becomes full, it discards an item each time a new item is pushed into, but it avoids moving every item in the memory region. It's functions are thread-safe, and most of its simple functions are inlined.
+Where the data should be pushed back to update the graph in `PlottingArea`. After it becomes full, it discards an item each time a new item is pushed into, but it avoids moving every item in the memory region. Most of its simple functions are inlined.
 
 Optimized algorithms calculating min/max/average values are implemented here, and spike detection is enabled by default so that spikes can be treated specially to avoid flickering of spikes when the x-axis index step for data plotting is adjusted for a wide index range.
 
