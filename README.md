@@ -1,4 +1,4 @@
-# SimpleCairoPlot
+# simple-cairo-plot
 An easy-to-use component for continuous recording and plotting of variables. it depends on `gtkmm-3.0`, and is implemented with Cairo.
 
 ## Demo
