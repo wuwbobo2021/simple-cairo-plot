@@ -252,7 +252,7 @@ bool Recorder::open_csv(const std::string& file_path)
 	return suc;
 }
 
-inline std::ostream& operator<<(std::ostream& ost, const system_clock::time_point& t)
+static inline std::ostream& operator<<(std::ostream& ost, const system_clock::time_point& t)
 {
 	const std::time_t t_c = system_clock::to_time_t(t);
 	return ost << std::put_time(std::localtime(&t_c), "%Y-%m-%d %H:%M:%S");
@@ -321,7 +321,7 @@ bool Recorder::set_redraw_interval(unsigned new_redraw_interval)
 	return true;
 }
 
-inline bool almost_equal(float val1, float val2) {
+static inline bool almost_equal(float val1, float val2) {
 	return fabs(val1 - val2) <= (val1 + val2) / 2.0 / 1000.0;
 }
 
@@ -631,7 +631,7 @@ bool Recorder::auto_set_scroll_mode(Glib::RefPtr<Gtk::Adjustment> adj) //default
 	return this->flag_goto_end;
 }
 
-inline std::string float_to_str(float val, std::ostringstream& oss)
+static inline std::string float_to_str(float val, std::ostringstream& oss)
 {
 	oss.str(""); oss << val;
 	return oss.str();

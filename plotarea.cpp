@@ -327,7 +327,7 @@ void PlotArea::refresh_loop() //in the timer thread
 	}
 }
 
-inline void set_cr_color(const Cairo::RefPtr<Cairo::Context>& cr, const Gdk::RGBA& color)
+static inline void set_cr_color(const Cairo::RefPtr<Cairo::Context>& cr, const Gdk::RGBA& color)
 {
 	cr->set_source_rgb(color.get_red(), color.get_green(), color.get_blue());
 }
@@ -392,7 +392,7 @@ void PlotArea::draw(Cairo::RefPtr<Cairo::Context> cr)
 	this->flag_drawing = false;
 }
 
-inline unsigned int get_precision(float len_seg)
+static inline unsigned int get_precision(float len_seg)
 {
 	if (len_seg == 0) return 0;
 	float len = len_seg / 10.0; unsigned int i;
@@ -400,7 +400,7 @@ inline unsigned int get_precision(float len_seg)
 	return i;
 }
 
-inline std::string float_to_str(float val, std::ostringstream& oss)
+static inline std::string float_to_str(float val, std::ostringstream& oss)
 {
 	oss.str(""); oss << val;
 	return oss.str();
@@ -714,7 +714,7 @@ void PlotBuffer::buf_cr_spike_sync()
 	}
 }
 
-inline void cr_append(const Cairo::RefPtr<Cairo::Context>& cr, cairo_path_data_t* data, int num_data)
+static inline void cr_append(const Cairo::RefPtr<Cairo::Context>& cr, cairo_path_data_t* data, int num_data)
 {
 	if (num_data == 0) return;
 	cairo_path_t path_info = {CAIRO_STATUS_SUCCESS, data, num_data};
