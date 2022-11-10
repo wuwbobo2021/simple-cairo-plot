@@ -16,12 +16,12 @@ using namespace SimpleCairoPlot;
 
 Frontend::Frontend() {}
 
-Frontend::Frontend(std::vector<VariableAccessPtr>& ptrs, unsigned int buf_size)
+Frontend::Frontend(std::vector<VariablePtr>& ptrs, unsigned int buf_size)
 {
 	this->init(ptrs, buf_size);
 }
 
-void Frontend::init(std::vector<VariableAccessPtr>& ptrs, unsigned int buf_size)
+void Frontend::init(std::vector<VariablePtr>& ptrs, unsigned int buf_size)
 {
 	if (ptrs.size() == 0 || buf_size < 2)
 		throw std::runtime_error("Frontend::init(): invalid parameter.");

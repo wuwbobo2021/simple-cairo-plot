@@ -38,14 +38,14 @@ Implements a graph box for a single buffer without scroll box. It only supports 
 
 Notice: `PlotArea` cannot receive button press event and button release event by itself. If needed, put it inside a `Gtk::EventBox` which handles these events.
 
-### VariableAccessPtr
+### VariablePtr
 Pointer of an variable or a function which has a `void*` parameter and returns a `float` value. Its efficiency is close to direct access when pointing to a memory address, and is better than std::function wrapper when pointing to a member function. Pointer of a member function which returns a `float` value and has no extra parameters can be created by:
 ```
 MemberFuncPtr<ClassName, &ClassName::function_name>(&object_name)
 ```
 
 ### Recorder
-Packs multiple plotting areas and a scroll box for x-axis. It accepts a group of `VariableAccessPtr` pointers from which the data is read, then creates multiple buffers multiple plotting areas for these variables. After it is started, it reads and pushs the data into the buffers in given interval, and the unit of axis-x values is set to seconds. It provides zoom in/out (by left/right mouse button clicking on it) and CSV file opening/saving features.
+Packs multiple plotting areas and a scroll box for x-axis. It accepts a group of `VariablePtr` pointers from which the data is read, then creates multiple buffers multiple plotting areas for these variables. After it is started, it reads and pushs the data into the buffers in given interval, and the unit of axis-x values is set to seconds. It provides zoom in/out (by left/right mouse button clicking on it) and CSV file opening/saving features.
 
 `Recorder` is not capable of loading a block of data at once. In this case, it can still be used to show data (alias `RecordView` can be used for this purpose). Do not call `Recorder::start()`, but load data into each buffer manually, then call `Recorder::refresh_view()`. Call `Recorder::clear()` to clear them. In case of the amount of data in the buffers are not equal, that of the buffer for the first variable makes sense. To avoid writing invalid non-zero data into the CSV file, call `CircularBuffer::erase()` for each buffer after calling `Recorder::clear()`.
 

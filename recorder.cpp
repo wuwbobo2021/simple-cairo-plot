@@ -29,7 +29,7 @@ Recorder::Recorder():
 	box_var_names(Gtk::ORIENTATION_HORIZONTAL, 20)
 {}
 
-Recorder::Recorder(std::vector<VariableAccessPtr>& ptrs, unsigned int buf_size):
+Recorder::Recorder(std::vector<VariablePtr>& ptrs, unsigned int buf_size):
 	Box(Gtk::ORIENTATION_VERTICAL, 5),
 	scrollbox(Gtk::ORIENTATION_HORIZONTAL, PlotArea::Border_X_Left - 2),
 	scrollbar(Gtk::Adjustment::create(0, 0, 200, 1, 200, 200), Gtk::ORIENTATION_HORIZONTAL),
@@ -38,21 +38,21 @@ Recorder::Recorder(std::vector<VariableAccessPtr>& ptrs, unsigned int buf_size):
 	this->init(ptrs, buf_size);
 }
 
-void Recorder::init(std::vector<VariableAccessPtr>& ptrs, unsigned int buf_size)
+void Recorder::init(std::vector<VariablePtr>& ptrs, unsigned int buf_size)
 {
 	if (this->var_cnt) return;
 	
 	if (buf_size < 2)
 		throw std::invalid_argument("Recorder::init(): invalid buffer size setting (too small).");
 	if (ptrs.size() == 0)
-		throw std::invalid_argument("Recorder::init(): requires at least 1 VariableAccessPtr.");
+		throw std::invalid_argument("Recorder::init(): requires at least 1 VariablePtr.");
 	
 	this->var_cnt = ptrs.size();
 	this->flag_spike_check = (buf_size > PlotArea::Plot_Data_Amount_Limit_Min);
 	
 	bool except_caught = false;
 	try {
-		this->ptrs = new VariableAccessPtr[var_cnt];
+		this->ptrs = new VariablePtr[var_cnt];
 		this->bufs = new CircularBuffer[var_cnt];
 		this->areas = new PlotArea[var_cnt];
 		this->eventboxes = new Gtk::EventBox[var_cnt];
@@ -497,7 +497,7 @@ void Recorder::record_loop()
 				this->dispatcher_sig_full.emit();
 		}
 		
-		t += microseconds((int)(this->interval * 1000.0));
+		t += microseconds((unsigned long int)(this->interval * 1000.0));
 		if (t <= steady_clock::now()) continue; //rarely happens
 		
 		// better than this_thread::sleep_until() on Windows

@@ -26,9 +26,9 @@ public:
 
 Demo::Demo()
 {
-	std::vector<VariableAccessPtr> vect_ptr;
-	VariableAccessPtr ptr1 = MemberFuncPtr<Demo, &Demo::read_var1>(this),
-	                  ptr2 = MemberFuncPtr<Demo, &Demo::read_var2>(this);
+	std::vector<VariablePtr> vect_ptr;
+	VariablePtr ptr1 = MemberFuncPtr<Demo, &Demo::read_var1>(this),
+	            ptr2 = MemberFuncPtr<Demo, &Demo::read_var2>(this);
 	ptr1.color_plot.set_rgba(1.0, 0.0, 0.0); //red
 	ptr2.color_plot.set_rgba(0.0, 0.0, 1.0); //blue
 	vect_ptr.push_back(ptr1); vect_ptr.push_back(ptr2);

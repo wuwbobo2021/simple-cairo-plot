@@ -19,13 +19,14 @@
 
 namespace SimpleCairoPlot
 {
-class Recorder; class VariableAccessPtr;
+class Recorder; class VariablePtr;
 using RecordView = Recorder;
+using VariableAccessPtr = VariablePtr; //previous name
 
 using VariableAccessFuncPtr = float (*)(void*);
 
 // used by the recorder to access current values of variables
-class VariableAccessPtr
+class VariablePtr
 {
 public:
 	std::string unit_name = "", name_csv = "";
@@ -35,9 +36,9 @@ public:
 	
 	Gdk::RGBA color_plot;
 	
-	VariableAccessPtr();
-	VariableAccessPtr(const volatile float* pd);
-	VariableAccessPtr(void* pobj, VariableAccessFuncPtr pfunc);
+	VariablePtr();
+	VariablePtr(const volatile float* pd);
+	VariablePtr(void* pobj, VariableAccessFuncPtr pfunc);
 	void set(const volatile float* pd);
 	void set(void* pobj, VariableAccessFuncPtr pfunc);
 	float read() const;
@@ -64,31 +65,31 @@ float MemberFuncCall(void* pobj)
 
 // use this function to create the pointer for a member function.
 template <typename T, float (T::*F)()>
-inline VariableAccessPtr MemberFuncPtr(T* pobj)
+inline VariablePtr MemberFuncPtr(T* pobj)
 {
-	return VariableAccessPtr(static_cast<void*>(pobj), &MemberFuncCall<T, F>);
+	return VariablePtr(static_cast<void*>(pobj), &MemberFuncCall<T, F>);
 }
 
-inline VariableAccessPtr::VariableAccessPtr() {}
+inline VariablePtr::VariablePtr() {}
 
-inline VariableAccessPtr::VariableAccessPtr(const volatile float* pd)
+inline VariablePtr::VariablePtr(const volatile float* pd)
 {
 	this->set(pd);
 }
 
-inline VariableAccessPtr::VariableAccessPtr(void* pobj, VariableAccessFuncPtr pfunc)
+inline VariablePtr::VariablePtr(void* pobj, VariableAccessFuncPtr pfunc)
 {
 	this->set(pobj, pfunc);
 }
 
-inline void VariableAccessPtr::set(const volatile float* pd)
+inline void VariablePtr::set(const volatile float* pd)
 {
 	this->addr_data = pd;
 	this->read(); //produce segment fault earlier if the pointer is null
 	this->color_plot.set_rgba(1.0, 0.0, 0.0); //red
 }
 
-inline void VariableAccessPtr::set(void* pobj, VariableAccessFuncPtr pfunc)
+inline void VariablePtr::set(void* pobj, VariableAccessFuncPtr pfunc)
 {
 	this->is_func_ptr = true;
 	this->addr_obj = pobj; this->addr_func = pfunc;
@@ -96,7 +97,7 @@ inline void VariableAccessPtr::set(void* pobj, VariableAccessFuncPtr pfunc)
 	this->color_plot.set_rgba(1.0, 0.0, 0.0);
 }
 
-inline float VariableAccessPtr::read() const
+inline float VariablePtr::read() const
 {
 	if (this->is_func_ptr)
 		return this->addr_func(this->addr_obj);
@@ -110,8 +111,8 @@ class Recorder: public Gtk::Box
 {
 public:
 	// note: some inline functions are NOT safe before initialization
-	Recorder(); void init(std::vector<VariableAccessPtr>& ptrs, unsigned int buf_size);
-	Recorder(std::vector<VariableAccessPtr>& ptrs, unsigned int buf_size);
+	Recorder(); void init(std::vector<VariablePtr>& ptrs, unsigned int buf_size);
+	Recorder(std::vector<VariablePtr>& ptrs, unsigned int buf_size);
 	virtual ~Recorder();
 	
 	bool is_recording() const;
@@ -177,7 +178,7 @@ public:
 private:
 	unsigned int var_cnt = 0;
 	
-	VariableAccessPtr* ptrs = NULL;
+	VariablePtr* ptrs = NULL;
 	CircularBuffer* bufs = NULL;
 	PlotArea* areas = NULL; Gtk::EventBox* eventboxes = NULL; //DrawingArea can't handle button events anyway
 	
@@ -281,9 +282,11 @@ inline std::chrono::system_clock::time_point Recorder::time_start() const
 
 inline std::chrono::system_clock::time_point Recorder::time_data(unsigned int i) const
 {
-	return this->tp_start + std::chrono::microseconds(
-		(long int)((this->bufs[0].count_overwritten() + i) * 1000.0 * this->interval)
-	);
+	unsigned long int i_abs = this->bufs[0].count_overwritten() + i;
+	unsigned long int t_s = ((double)i_abs * this->interval) / 1000.0;
+	double i_rem = i_abs - 1000.0 * (double)t_s / this->interval;
+	unsigned long int t_us = i_rem * this->interval * 1000.0;
+	return this->tp_start + std::chrono::seconds(t_s) + std::chrono::microseconds(t_us);
 }
 
 inline std::chrono::system_clock::time_point Recorder::time_first_data() const

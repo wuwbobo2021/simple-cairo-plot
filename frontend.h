@@ -17,7 +17,7 @@ namespace SimpleCairoPlot
 
 class Frontend: public sigc::trackable
 {
-	std::vector<VariableAccessPtr> ptrs; unsigned int buf_size;
+	std::vector<VariablePtr> ptrs; unsigned int buf_size;
 	Recorder* rec;
 	
 	std::thread* thread_gtk = NULL;
@@ -44,8 +44,8 @@ class Frontend: public sigc::trackable
 public:
 	std::string title = "Recorder";
 	
-	Frontend(); void init(std::vector<VariableAccessPtr>& ptrs, unsigned int buf_size);
-	Frontend(std::vector<VariableAccessPtr>& ptrs, unsigned int buf_size);
+	Frontend(); void init(std::vector<VariablePtr>& ptrs, unsigned int buf_size);
+	Frontend(std::vector<VariablePtr>& ptrs, unsigned int buf_size);
 	Frontend(const Frontend&) = delete;
 	Frontend& operator=(const Frontend&) = delete;
 	virtual ~Frontend();
