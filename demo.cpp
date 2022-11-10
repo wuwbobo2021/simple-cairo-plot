@@ -46,8 +46,8 @@ void Demo::run()
 
 inline float Demo::t()
 {
-	steady_clock::time_point t_now = steady_clock::now();
-	return (t_now - this->t_start).count() / 1000.0 / 1000.0 / 1000.0; //nanoseconds to seconds
+	return duration_cast<microseconds>(steady_clock::now() - this->t_start).count()
+	     / 1000.0 / 1000.0;
 }
 
 float Demo::read_var1()

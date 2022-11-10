@@ -36,9 +36,9 @@ public:
 	Gdk::RGBA color_plot;
 	
 	VariableAccessPtr();
-	VariableAccessPtr(const float* pd);
+	VariableAccessPtr(const volatile float* pd);
 	VariableAccessPtr(void* pobj, VariableAccessFuncPtr pfunc);
-	void set(const float* pd);
+	void set(const volatile float* pd);
 	void set(void* pobj, VariableAccessFuncPtr pfunc);
 	float read() const;
 	
@@ -46,7 +46,7 @@ private:
 	bool is_func_ptr = false;
 	
 	// used if it's a data pointer
-	const float* addr_data = NULL;
+	const volatile float* addr_data = NULL;
 	
 	// used if it's a function pointer
 	VariableAccessFuncPtr addr_func = NULL;
@@ -71,7 +71,7 @@ inline VariableAccessPtr MemberFuncPtr(T* pobj)
 
 inline VariableAccessPtr::VariableAccessPtr() {}
 
-inline VariableAccessPtr::VariableAccessPtr(const float* pd)
+inline VariableAccessPtr::VariableAccessPtr(const volatile float* pd)
 {
 	this->set(pd);
 }
@@ -81,7 +81,7 @@ inline VariableAccessPtr::VariableAccessPtr(void* pobj, VariableAccessFuncPtr pf
 	this->set(pobj, pfunc);
 }
 
-inline void VariableAccessPtr::set(const float* pd)
+inline void VariableAccessPtr::set(const volatile float* pd)
 {
 	this->addr_data = pd;
 	this->read(); //produce segment fault earlier if the pointer is null

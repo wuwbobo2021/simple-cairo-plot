@@ -86,17 +86,19 @@ public:
 	void unlock();
 	
 private:
+	unsigned int bufsize = 0;
 	float* buf = NULL; float* bufend = NULL;
-	float* end = NULL; //points to where the next item should be stored in
-	unsigned int bufsize = 0, cnt = 0;
+	float* volatile end = NULL; //points to where the next item should be stored in
+	volatile unsigned int cnt = 0;
 	volatile unsigned long int cnt_overwrite = 0;
 	
 	// used for spike check
+	unsigned int buf_spike_size = 0;
 	float spike_check_ref_min = 0;
 	unsigned long int* buf_spike = NULL, * buf_spike_bufend = NULL;
-	unsigned long int* buf_spike_end = NULL;
-	unsigned int buf_spike_size = 0, buf_spike_cnt = 0;
-	float spike_check_av = 0;
+	unsigned long int* volatile buf_spike_end = NULL;
+	volatile unsigned int buf_spike_cnt = 0;
+	volatile float spike_check_av = 0;
 	
 	// used for optimization (indexes are "absolute")
 	struct MinMaxScanInfo {
@@ -362,7 +364,7 @@ inline void CircularBuffer::spike_check()
 {
 	using namespace std;
 	
-	if (this->cnt == 1) this->spike_check_av = this->last_item();	
+	if (this->cnt == 1) this->spike_check_av = this->last_item();
 	if (this->cnt < 3) return;
 	
 	float ref = this->spike_check_av;
