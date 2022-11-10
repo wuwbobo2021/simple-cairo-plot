@@ -184,7 +184,7 @@ void Frontend::create_window()
 	bar->pack_start(*button_open, Gtk::PACK_SHRINK);
 	bar->pack_start(*button_save, Gtk::PACK_SHRINK);
 	
-	box->set_border_width(5);
+	box->set_border_width(5); box->set_spacing(2);
 	box->pack_start(*this->rec, Gtk::PACK_EXPAND_WIDGET);
 	box->pack_start(*bar, Gtk::PACK_SHRINK);
 
