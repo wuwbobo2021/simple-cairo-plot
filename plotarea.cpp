@@ -161,6 +161,8 @@ void PlotArea::range_x_extend(bool remain_space)
 			this->range_x.fit_by_range(this->source->range_max());
 	} else
 		this->range_x = this->source->range();
+	
+	this->adjust_index_step();
 }
 
 bool PlotArea::set_range_y(ValueRange range)
@@ -339,7 +341,7 @@ void PlotArea::draw(Cairo::RefPtr<Cairo::Context> cr)
 	
 	this->flag_drawing = true;
 	
-	// refresh PlotParam
+	// update PlotParam
 	this->param.data_cnt = this->source->count();
 	this->param.data_cnt_overall = this->source->count_overall();
 	this->param.range_x = this->source->range_to_abs(this->range_x);
